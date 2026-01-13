@@ -112,9 +112,8 @@
         _drawerOpen = !_drawerOpen;
     }
 
-    private async Task Logout()
+    private void Logout()
     {
-        await AuthService.LogoutAsync();
-        NavigationManager.NavigateTo("/login", forceLoad: true);
+        NavigationManager.NavigateTo("/Account/Logout", forceLoad: true);
     }
 }

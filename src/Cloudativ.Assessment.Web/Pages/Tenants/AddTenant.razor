@@ -1,0 +1,196 @@
+@page "/tenants/new"
+@attribute [Authorize]
+@inject ITenantService TenantService
+@inject NavigationManager NavigationManager
+@inject ISnackbar Snackbar
+
+<PageTitle>Add Tenant - Cloudativ Assessment</PageTitle>
+
+<div class="d-flex align-center mb-4">
+    <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" OnClick="@(() => NavigationManager.NavigateTo("/tenants"))" />
+    <MudText Typo="Typo.h5" Style="font-weight: 600; color: #51627A;">Add New Tenant</MudText>
+</div>
+
+<MudPaper Class="pa-6" Elevation="2" Style="border-radius: 12px; max-width: 800px;">
+    <EditForm Model="@_model" OnValidSubmit="HandleSubmit">
+        <DataAnnotationsValidator />
+
+        <MudText Typo="Typo.h6" Class="mb-4" Style="color: #51627A;">Tenant Information</MudText>
+
+        <MudGrid>
+            <MudItem xs="12" md="6">
+                <MudTextField @bind-Value="_model.Name"
+                              Label="Tenant Name"
+                              Required="true"
+                              RequiredError="Tenant name is required"
+                              Variant="Variant.Outlined"
+                              Placeholder="e.g., Contoso Ltd" />
+            </MudItem>
+            <MudItem xs="12" md="6">
+                <MudTextField @bind-Value="_model.Domain"
+                              Label="Primary Domain"
+                              Required="true"
+                              RequiredError="Domain is required"
+                              Variant="Variant.Outlined"
+                              Placeholder="e.g., contoso.com" />
+            </MudItem>
+            <MudItem xs="12" md="6">
+                <MudTextField @bind-Value="_azureTenantIdString"
+                              Label="Azure Tenant ID"
+                              Variant="Variant.Outlined"
+                              HelperText="Optional - GUID of the Azure AD tenant"
+                              Placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" />
+            </MudItem>
+            <MudItem xs="12" md="6">
+                <MudSelect @bind-Value="_model.Industry"
+                           Label="Industry"
+                           Variant="Variant.Outlined"
+                           Clearable="true">
+                    <MudSelectItem Value="@("Technology")">Technology</MudSelectItem>
+                    <MudSelectItem Value="@("Finance")">Finance</MudSelectItem>
+                    <MudSelectItem Value="@("Healthcare")">Healthcare</MudSelectItem>
+                    <MudSelectItem Value="@("Education")">Education</MudSelectItem>
+                    <MudSelectItem Value="@("Government")">Government</MudSelectItem>
+                    <MudSelectItem Value="@("Manufacturing")">Manufacturing</MudSelectItem>
+                    <MudSelectItem Value="@("Retail")">Retail</MudSelectItem>
+                    <MudSelectItem Value="@("Other")">Other</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_model.ContactEmail"
+                              Label="Contact Email"
+                              InputType="InputType.Email"
+                              Variant="Variant.Outlined"
+                              Placeholder="admin@contoso.com" />
+            </MudItem>
+        </MudGrid>
+
+        <MudDivider Class="my-6" />
+
+        <div class="d-flex align-center mb-4">
+            <MudText Typo="Typo.h6" Style="color: #51627A;">Azure AD App Registration</MudText>
+            <MudChip Size="Size.Small" Color="Color.Info" Class="ml-2">Optional</MudChip>
+        </div>
+
+        <MudAlert Severity="Severity.Info" Class="mb-4" Dense="true">
+            Provide Azure AD App credentials to enable automatic Microsoft 365 security assessments.
+            You can configure this later from the tenant settings.
+        </MudAlert>
+
+        <MudGrid>
+            <MudItem xs="12" md="6">
+                <MudTextField @bind-Value="_model.ClientId"
+                              Label="Application (Client) ID"
+                              Variant="Variant.Outlined"
+                              Placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" />
+            </MudItem>
+            <MudItem xs="12" md="6">
+                <MudTextField @bind-Value="_model.ClientSecret"
+                              Label="Client Secret"
+                              InputType="@(_showSecret ? InputType.Text : InputType.Password)"
+                              Variant="Variant.Outlined"
+                              Adornment="Adornment.End"
+                              AdornmentIcon="@(_showSecret ? Icons.Material.Filled.Visibility : Icons.Material.Filled.VisibilityOff)"
+                              OnAdornmentClick="@(() => _showSecret = !_showSecret)" />
+            </MudItem>
+        </MudGrid>
+
+        <MudDivider Class="my-6" />
+
+        <div class="d-flex justify-end gap-3">
+            <MudButton Variant="Variant.Text"
+                       Color="Color.Default"
+                       OnClick="@(() => NavigationManager.NavigateTo("/tenants"))">
+                Cancel
+            </MudButton>
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       ButtonType="ButtonType.Submit"
+                       Disabled="@_isSubmitting"
+                       StartIcon="@(_isSubmitting ? null : Icons.Material.Filled.Save)">
+                @if (_isSubmitting)
+                {
+                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                    <span>Creating...</span>
+                }
+                else
+                {
+                    <span>Create Tenant</span>
+                }
+            </MudButton>
+        </div>
+    </EditForm>
+</MudPaper>
+
+@code {
+    private TenantCreateModel _model = new();
+    private string _azureTenantIdString = string.Empty;
+    private bool _isSubmitting = false;
+    private bool _showSecret = false;
+
+    private class TenantCreateModel
+    {
+        [Required(ErrorMessage = "Tenant name is required")]
+        [StringLength(200, ErrorMessage = "Name cannot exceed 200 characters")]
+        public string Name { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Domain is required")]
+        [StringLength(100, ErrorMessage = "Domain cannot exceed 100 characters")]
+        public string Domain { get; set; } = string.Empty;
+
+        public string? Industry { get; set; }
+
+        [EmailAddress(ErrorMessage = "Invalid email address")]
+        public string? ContactEmail { get; set; }
+
+        public string? ClientId { get; set; }
+        public string? ClientSecret { get; set; }
+    }
+
+    private async Task HandleSubmit()
+    {
+        _isSubmitting = true;
+
+        try
+        {
+            Guid? azureTenantId = null;
+            if (!string.IsNullOrWhiteSpace(_azureTenantIdString))
+            {
+                if (Guid.TryParse(_azureTenantIdString, out var parsedGuid))
+                {
+                    azureTenantId = parsedGuid;
+                }
+                else
+                {
+                    Snackbar.Add("Invalid Azure Tenant ID format. Please enter a valid GUID.", Severity.Error);
+                    _isSubmitting = false;
+                    return;
+                }
+            }
+
+            var dto = new TenantCreateDto
+            {
+                Name = _model.Name,
+                Domain = _model.Domain.ToLowerInvariant().Trim(),
+                AzureTenantId = azureTenantId,
+                Industry = _model.Industry,
+                ContactEmail = _model.ContactEmail,
+                ClientId = _model.ClientId,
+                ClientSecret = _model.ClientSecret
+            };
+
+            var result = await TenantService.CreateAsync(dto);
+
+            Snackbar.Add($"Tenant '{result.Name}' created successfully!", Severity.Success);
+            NavigationManager.NavigateTo($"/tenants/{result.Id}");
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error creating tenant: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isSubmitting = false;
+        }
+    }
+}
