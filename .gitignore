@@ -1,0 +1,56 @@
+# Build results
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+build/
+[Bb]in/
+[Oo]bj/
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# NuGet
+packages/
+*.nupkg
+project.lock.json
+
+# Rider
+.idea/
+
+# VS Code
+.vscode/
+
+# User-specific files
+*.rsuser
+*.pidb
+*.userprefs
+
+# Build artifacts
+*.dll
+*.exe
+*.pdb
+*.cache
+
+# OS generated
+.DS_Store
+Thumbs.db
+
+# Environment files
+.env
+*.local
+
+# Database files
+*.db
+*.sqlite
+
+# Log files
+logs/
+*.log
+
+# Temp files
+tmpclaude-*

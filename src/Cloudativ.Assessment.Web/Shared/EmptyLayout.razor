@@ -1,0 +1,20 @@
+@inherits LayoutComponentBase
+
+<MudThemeProvider Theme="_cloudativTheme" />
+<MudDialogProvider />
+<MudSnackbarProvider />
+
+@Body
+
+@code {
+    private MudTheme _cloudativTheme = new MudTheme()
+    {
+        Palette = new PaletteLight()
+        {
+            Primary = "#51627A",
+            Secondary = "#E0FC8E",
+            Tertiary = "#B6CBE0",
+            Error = "#EF7348"
+        }
+    };
+}

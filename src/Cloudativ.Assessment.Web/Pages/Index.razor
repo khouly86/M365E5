@@ -1,0 +1,325 @@
+@page "/"
+@attribute [Authorize]
+@inject ITenantService TenantService
+@inject IDashboardService DashboardService
+@inject NavigationManager NavigationManager
+
+<PageTitle>Dashboard - Cloudativ Assessment</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4" Style="color: #51627A; font-weight: 600;">
+    Security Assessment Dashboard
+</MudText>
+
+@if (_isLoading)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="mb-4" />
+}
+else
+{
+    <!-- Summary Cards -->
+    <MudGrid Class="mb-6">
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4 dashboard-card" Elevation="2">
+                <div class="d-flex justify-space-between align-center">
+                    <div>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Total Tenants</MudText>
+                        <MudText Typo="Typo.h4" Style="font-weight: 600;">@_summary.TotalTenants</MudText>
+                    </div>
+                    <MudAvatar Style="background: #E0FC8E; color: #51627A;" Size="Size.Large">
+                        <MudIcon Icon="@Icons.Material.Filled.Business" />
+                    </MudAvatar>
+                </div>
+                <MudText Typo="Typo.caption" Class="mt-2">
+                    <span style="color: #4CAF50;">@_summary.ActiveTenants active</span> ·
+                    <span style="color: #EF7348;">@_summary.PendingOnboarding pending</span>
+                </MudText>
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4 dashboard-card" Elevation="2">
+                <div class="d-flex justify-space-between align-center">
+                    <div>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Total Assessments</MudText>
+                        <MudText Typo="Typo.h4" Style="font-weight: 600;">@_summary.TotalAssessments</MudText>
+                    </div>
+                    <MudAvatar Style="background: #B6CBE0; color: #51627A;" Size="Size.Large">
+                        <MudIcon Icon="@Icons.Material.Filled.Assessment" />
+                    </MudAvatar>
+                </div>
+                <MudText Typo="Typo.caption" Class="mt-2">
+                    <span style="color: #51627A;">@_summary.AssessmentsThisMonth this month</span>
+                </MudText>
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4 dashboard-card" Elevation="2">
+                <div class="d-flex justify-space-between align-center">
+                    <div>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Average Score</MudText>
+                        <MudText Typo="Typo.h4" Style="font-weight: 600;">@_summary.AverageScore.ToString("F0")%</MudText>
+                    </div>
+                    <MudAvatar Style="@($"background: {GetScoreColor(_summary.AverageScore)}; color: white;")" Size="Size.Large">
+                        <MudIcon Icon="@Icons.Material.Filled.TrendingUp" />
+                    </MudAvatar>
+                </div>
+                <MudText Typo="Typo.caption" Class="mt-2">
+                    Grade: <strong>@GetGrade(_summary.AverageScore)</strong>
+                </MudText>
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4 dashboard-card" Elevation="2">
+                <div class="d-flex justify-space-between align-center">
+                    <div>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Critical Findings</MudText>
+                        <MudText Typo="Typo.h4" Style="font-weight: 600; color: #f44336;">@_summary.CriticalFindingsCount</MudText>
+                    </div>
+                    <MudAvatar Style="background: #FFEBEE; color: #f44336;" Size="Size.Large">
+                        <MudIcon Icon="@Icons.Material.Filled.Warning" />
+                    </MudAvatar>
+                </div>
+                <MudText Typo="Typo.caption" Class="mt-2">
+                    <span style="color: #EF7348;">@_summary.HighFindingsCount high severity</span>
+                </MudText>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    <!-- Quick Actions -->
+    <MudPaper Class="pa-4 mb-6" Elevation="2">
+        <MudText Typo="Typo.h6" Class="mb-3">Quick Actions</MudText>
+        <MudButtonGroup Variant="Variant.Outlined" Color="Color.Primary">
+            <MudButton StartIcon="@Icons.Material.Filled.Add" OnClick="@(() => NavigationManager.NavigateTo("/tenants/new"))">
+                Add Tenant
+            </MudButton>
+            <MudButton StartIcon="@Icons.Material.Filled.PlayArrow" OnClick="OpenRunAssessmentDialog">
+                Run Assessment
+            </MudButton>
+            <MudButton StartIcon="@Icons.Material.Filled.Download" OnClick="@(() => NavigationManager.NavigateTo("/reports"))">
+                Generate Report
+            </MudButton>
+        </MudButtonGroup>
+    </MudPaper>
+
+    <MudGrid>
+        <!-- Tenants List -->
+        <MudItem xs="12" md="8">
+            <MudPaper Class="pa-4" Elevation="2">
+                <div class="d-flex justify-space-between align-center mb-4">
+                    <MudText Typo="Typo.h6">Tenants Overview</MudText>
+                    <MudButton Variant="Variant.Text" Color="Color.Primary" EndIcon="@Icons.Material.Filled.ArrowForward"
+                               OnClick="@(() => NavigationManager.NavigateTo("/tenants"))">
+                        View All
+                    </MudButton>
+                </div>
+
+                @if (_tenants.Any())
+                {
+                    <MudTable Items="@_tenants" Hover="true" Dense="true" Striped="true">
+                        <HeaderContent>
+                            <MudTh>Tenant</MudTh>
+                            <MudTh>Status</MudTh>
+                            <MudTh>Last Assessment</MudTh>
+                            <MudTh>Score</MudTh>
+                            <MudTh>Actions</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd>
+                                <div class="d-flex align-center">
+                                    <MudAvatar Size="Size.Small" Style="background: #E0FC8E; color: #51627A;" Class="mr-2">
+                                        @context.Name[0]
+                                    </MudAvatar>
+                                    <div>
+                                        <MudText Typo="Typo.body2" Style="font-weight: 500;">@context.Name</MudText>
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary">@context.Domain</MudText>
+                                    </div>
+                                </div>
+                            </MudTd>
+                            <MudTd>
+                                <MudChip Size="Size.Small" Color="@GetStatusColor(context.OnboardingStatus)" Variant="Variant.Filled">
+                                    @context.OnboardingStatus
+                                </MudChip>
+                            </MudTd>
+                            <MudTd>
+                                @if (context.LastAssessmentDate.HasValue)
+                                {
+                                    <MudText Typo="Typo.body2">@context.LastAssessmentDate.Value.ToString("MMM dd, yyyy")</MudText>
+                                }
+                                else
+                                {
+                                    <MudText Typo="Typo.body2" Color="Color.Secondary">Never</MudText>
+                                }
+                            </MudTd>
+                            <MudTd>
+                                @if (context.LastAssessmentScore.HasValue)
+                                {
+                                    <MudChip Size="Size.Small" Style="@($"background: {GetScoreColor(context.LastAssessmentScore.Value)}; color: white;")">
+                                        @context.LastAssessmentScore%
+                                    </MudChip>
+                                }
+                                else
+                                {
+                                    <MudText Typo="Typo.body2" Color="Color.Secondary">N/A</MudText>
+                                }
+                            </MudTd>
+                            <MudTd>
+                                <MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="Size.Small"
+                                               OnClick="@(() => NavigationManager.NavigateTo($"/tenants/{context.Id}"))" />
+                                <MudIconButton Icon="@Icons.Material.Filled.PlayArrow" Size="Size.Small" Color="Color.Primary"
+                                               OnClick="@(() => StartAssessment(context.Id))" />
+                            </MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                }
+                else
+                {
+                    <MudAlert Severity="Severity.Info">
+                        No tenants configured yet. <MudLink Href="/tenants/new">Add your first tenant</MudLink> to get started.
+                    </MudAlert>
+                }
+            </MudPaper>
+        </MudItem>
+
+        <!-- Recent Activity -->
+        <MudItem xs="12" md="4">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.h6" Class="mb-4">Recent Assessments</MudText>
+
+                @if (_summary.RecentAssessments.Any())
+                {
+                    <MudList Dense="true">
+                        @foreach (var assessment in _summary.RecentAssessments.Take(5))
+                        {
+                            <MudListItem OnClick="@(() => NavigationManager.NavigateTo($"/assessments/{assessment.RunId}"))">
+                                <div class="d-flex justify-space-between align-center" style="width: 100%;">
+                                    <div>
+                                        <MudText Typo="Typo.body2" Style="font-weight: 500;">@assessment.TenantName</MudText>
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                            @assessment.CompletedAt.ToString("MMM dd, HH:mm")
+                                        </MudText>
+                                    </div>
+                                    <MudChip Size="Size.Small" Style="@($"background: {GetScoreColor(assessment.Score)}; color: white;")">
+                                        @assessment.Score%
+                                    </MudChip>
+                                </div>
+                            </MudListItem>
+                        }
+                    </MudList>
+                }
+                else
+                {
+                    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="text-center py-4">
+                        No assessments yet
+                    </MudText>
+                }
+            </MudPaper>
+
+            <!-- Security Domains Overview -->
+            <MudPaper Class="pa-4 mt-4" Elevation="2">
+                <MudText Typo="Typo.h6" Class="mb-4">Security Domains</MudText>
+                <MudList Dense="true">
+                    @foreach (var domain in GetSecurityDomains())
+                    {
+                        <MudListItem Icon="@domain.Icon" IconColor="Color.Primary"
+                                     OnClick="@(() => NavigationManager.NavigateTo($"/domains/{domain.Route}"))">
+                            <MudText Typo="Typo.body2">@domain.Name</MudText>
+                        </MudListItem>
+                    }
+                </MudList>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+}
+
+<style>
+    .dashboard-card {
+        border-radius: 12px;
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    .dashboard-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+    }
+</style>
+
+@code {
+    private bool _isLoading = true;
+    private DashboardSummaryDto _summary = new();
+    private List<TenantDto> _tenants = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var tenantsTask = TenantService.GetAllAsync();
+            var summaryTask = DashboardService.GetSummaryAsync();
+
+            await Task.WhenAll(tenantsTask, summaryTask);
+
+            _tenants = (await tenantsTask).ToList();
+            _summary = await summaryTask;
+        }
+        catch (Exception ex)
+        {
+            // Handle error
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private string GetScoreColor(double score) => score switch
+    {
+        >= 90 => "#4CAF50",
+        >= 80 => "#8BC34A",
+        >= 70 => "#FFC107",
+        >= 60 => "#FF9800",
+        _ => "#f44336"
+    };
+
+    private string GetGrade(double score) => score switch
+    {
+        >= 90 => "A",
+        >= 80 => "B",
+        >= 70 => "C",
+        >= 60 => "D",
+        _ => "F"
+    };
+
+    private Color GetStatusColor(OnboardingStatus status) => status switch
+    {
+        OnboardingStatus.Active => Color.Success,
+        OnboardingStatus.Validated => Color.Info,
+        OnboardingStatus.InProgress => Color.Warning,
+        OnboardingStatus.Pending => Color.Default,
+        _ => Color.Error
+    };
+
+    private void OpenRunAssessmentDialog()
+    {
+        NavigationManager.NavigateTo("/assessments/new");
+    }
+
+    private void StartAssessment(Guid tenantId)
+    {
+        NavigationManager.NavigateTo($"/assessments/new?tenantId={tenantId}");
+    }
+
+    private List<(string Name, string Icon, string Route)> GetSecurityDomains() => new()
+    {
+        ("Identity & Access", Icons.Material.Filled.Security, "iam"),
+        ("Privileged Access", Icons.Material.Filled.AdminPanelSettings, "pim"),
+        ("Device & Endpoint", Icons.Material.Filled.Devices, "devices"),
+        ("Email Security", Icons.Material.Filled.Email, "email"),
+        ("Microsoft Defender", Icons.Material.Filled.Shield, "defender"),
+        ("Data Protection", Icons.Material.Filled.Lock, "dlp"),
+        ("Audit & Logging", Icons.Material.Filled.FactCheck, "audit"),
+        ("App Governance", Icons.Material.Filled.Apps, "apps"),
+        ("Collaboration", Icons.Material.Filled.Groups, "collaboration")
+    };
+}

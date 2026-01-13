@@ -1,0 +1,90 @@
+version: '3.8'
+
+services:
+  # Cloudativ Assessment Web Application
+  cloudativ-assessment:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cloudativ-assessment
+    ports:
+      - "5000:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ConnectionStrings__DefaultConnection=Data Source=/app/data/cloudativ_assessment.db
+      - Database__Provider=SQLite
+      - Logging__LogLevel__Default=Information
+    volumes:
+      - cloudativ-data:/app/data
+      - cloudativ-logs:/app/logs
+    networks:
+      - cloudativ-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  cloudativ-data:
+    driver: local
+  cloudativ-logs:
+    driver: local
+
+networks:
+  cloudativ-network:
+    driver: bridge
+
+# Alternative profile for PostgreSQL database
+# To use: docker-compose --profile postgres up -d
+---
+version: '3.8'
+
+services:
+  cloudativ-assessment-postgres:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cloudativ-assessment-postgres
+    profiles:
+      - postgres
+    ports:
+      - "5000:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ConnectionStrings__DefaultConnection=Host=postgres;Database=cloudativ;Username=cloudativ;Password=${POSTGRES_PASSWORD:-CloudativSecure123!}
+      - Database__Provider=PostgreSQL
+    volumes:
+      - cloudativ-logs:/app/logs
+    networks:
+      - cloudativ-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: cloudativ-postgres
+    profiles:
+      - postgres
+    environment:
+      - POSTGRES_USER=cloudativ
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-CloudativSecure123!}
+      - POSTGRES_DB=cloudativ
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - cloudativ-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cloudativ -d cloudativ"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+    driver: local

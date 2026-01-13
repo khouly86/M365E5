@@ -1,0 +1,120 @@
+@inherits LayoutComponentBase
+@inject NavigationManager NavigationManager
+@inject AuthenticationStateService AuthService
+
+<MudLayout>
+    <MudAppBar Elevation="1" Style="background: linear-gradient(135deg, #51627A 0%, #3d4a5c 100%);">
+        <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="@ToggleDrawer" />
+
+        <div class="d-flex align-center">
+            <!-- Logo Placeholder -->
+            <div class="cloudativ-logo-placeholder mr-2">
+                <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+                    <ellipse cx="16" cy="16" rx="14" ry="12" fill="#E0FC8E" opacity="0.9"/>
+                    <ellipse cx="16" cy="16" rx="10" ry="8" fill="#51627A"/>
+                </svg>
+            </div>
+            <MudText Typo="Typo.h6" Class="ml-2" Style="font-weight: 600;">Cloudativ Assessment</MudText>
+        </div>
+
+        <MudSpacer />
+
+        <AuthorizeView>
+            <Authorized>
+                <MudMenu Icon="@Icons.Material.Filled.Person" Color="Color.Inherit">
+                    <MudMenuItem>@context.User.Identity?.Name</MudMenuItem>
+                    <MudDivider />
+                    <MudMenuItem Icon="@Icons.Material.Filled.Settings" Href="/settings">Settings</MudMenuItem>
+                    <MudMenuItem Icon="@Icons.Material.Filled.Logout" OnClick="Logout">Logout</MudMenuItem>
+                </MudMenu>
+            </Authorized>
+        </AuthorizeView>
+    </MudAppBar>
+
+    <MudDrawer @bind-Open="_drawerOpen" ClipMode="DrawerClipMode.Always" Elevation="2"
+               Variant="DrawerVariant.Responsive" Breakpoint="Breakpoint.Md">
+        <MudDrawerHeader Class="pa-4">
+            <MudText Typo="Typo.h6" Style="color: white;">Navigation</MudText>
+        </MudDrawerHeader>
+        <MudNavMenu Color="Color.Secondary">
+            <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Dashboard">
+                Dashboard
+            </MudNavLink>
+            <MudNavLink Href="/tenants" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Business">
+                Tenants
+            </MudNavLink>
+            <MudNavLink Href="/assessments" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Assessment">
+                Assessments
+            </MudNavLink>
+
+            <MudDivider Class="my-2" Style="border-color: rgba(255,255,255,0.2);" />
+            <MudText Typo="Typo.caption" Class="px-4 py-2" Style="color: rgba(255,255,255,0.6);">Security Domains</MudText>
+
+            <MudNavLink Href="/domains/iam" Icon="@Icons.Material.Filled.Security">
+                Identity & Access
+            </MudNavLink>
+            <MudNavLink Href="/domains/pim" Icon="@Icons.Material.Filled.AdminPanelSettings">
+                Privileged Access
+            </MudNavLink>
+            <MudNavLink Href="/domains/devices" Icon="@Icons.Material.Filled.Devices">
+                Device & Endpoint
+            </MudNavLink>
+            <MudNavLink Href="/domains/email" Icon="@Icons.Material.Filled.Email">
+                Email Security
+            </MudNavLink>
+            <MudNavLink Href="/domains/defender" Icon="@Icons.Material.Filled.Shield">
+                Microsoft Defender
+            </MudNavLink>
+            <MudNavLink Href="/domains/dlp" Icon="@Icons.Material.Filled.Lock">
+                Data Protection
+            </MudNavLink>
+            <MudNavLink Href="/domains/audit" Icon="@Icons.Material.Filled.FactCheck">
+                Audit & Logging
+            </MudNavLink>
+            <MudNavLink Href="/domains/apps" Icon="@Icons.Material.Filled.Apps">
+                App Governance
+            </MudNavLink>
+            <MudNavLink Href="/domains/collaboration" Icon="@Icons.Material.Filled.Groups">
+                Collaboration
+            </MudNavLink>
+
+            <MudDivider Class="my-2" Style="border-color: rgba(255,255,255,0.2);" />
+
+            <MudNavLink Href="/reports" Icon="@Icons.Material.Filled.Summarize">
+                Reports
+            </MudNavLink>
+
+            <AuthorizeView Roles="SuperAdmin">
+                <Authorized>
+                    <MudNavLink Href="/admin" Icon="@Icons.Material.Filled.AdminPanelSettings">
+                        Administration
+                    </MudNavLink>
+                    <MudNavLink Href="/hangfire" Target="_blank" Icon="@Icons.Material.Filled.Work">
+                        Background Jobs
+                    </MudNavLink>
+                </Authorized>
+            </AuthorizeView>
+        </MudNavMenu>
+    </MudDrawer>
+
+    <MudMainContent Class="pt-16" Style="min-height: 100vh; background: #FAFAFA;">
+        <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="py-4">
+            @Body
+        </MudContainer>
+    </MudMainContent>
+</MudLayout>
+
+@code {
+    private bool _drawerOpen = true;
+
+    private void ToggleDrawer()
+    {
+        _drawerOpen = !_drawerOpen;
+    }
+
+    private async Task Logout()
+    {
+        await AuthService.LogoutAsync();
+        NavigationManager.NavigateTo("/login", forceLoad: true);
+    }
+}

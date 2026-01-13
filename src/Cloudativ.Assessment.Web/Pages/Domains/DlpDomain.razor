@@ -1,0 +1,426 @@
+@page "/domains/dlp"
+@page "/domains/dlp/{TenantId:guid}/{RunId:guid}"
+@attribute [Authorize]
+@inject ITenantService TenantService
+@inject IAssessmentService AssessmentService
+@inject NavigationManager NavigationManager
+@inject ISnackbar Snackbar
+
+<PageTitle>Data Protection & Compliance - Cloudativ Assessment</PageTitle>
+
+<div class="d-flex justify-space-between align-center mb-4">
+    <div>
+        <MudText Typo="Typo.h5" Style="font-weight: 600; color: #51627A;">Data Protection & Compliance</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">
+            DLP policies, sensitivity labels, retention policies, and compliance posture
+        </MudText>
+    </div>
+    <div>
+        @if (RunId.HasValue)
+        {
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Download"
+                       OnClick="ExportReport" Class="mr-2">
+                Export Report
+            </MudButton>
+        }
+        <MudSelect T="Guid?" Label="Select Tenant" @bind-Value="_selectedTenantId" Variant="Variant.Outlined"
+                   Dense="true" Style="min-width: 200px;">
+            @foreach (var tenant in _tenants)
+            {
+                <MudSelectItem Value="@((Guid?)tenant.Id)">@tenant.Name</MudSelectItem>
+            }
+        </MudSelect>
+    </div>
+</div>
+
+@if (_isLoading)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="mb-4" />
+}
+else if (_domainDetail == null)
+{
+    <MudAlert Severity="Severity.Info" Class="mb-4">
+        Select a tenant and run an assessment to view Data Protection findings.
+    </MudAlert>
+}
+else
+{
+    <!-- Score Overview -->
+    <MudGrid Class="mb-4">
+        <MudItem xs="12" md="3">
+            <MudPaper Class="pa-4" Elevation="2" Style="border-radius: 12px; text-align: center;">
+                <div style="position: relative; display: inline-block;">
+                    <MudProgressCircular Color="@GetScoreProgressColor(_domainDetail.Score.Score)" Value="@_domainDetail.Score.Score"
+                                         Size="Size.Large" StrokeWidth="8">
+                        <span style="font-size: 1.5rem; font-weight: 600;">@_domainDetail.Score.Score%</span>
+                    </MudProgressCircular>
+                </div>
+                <MudText Typo="Typo.h6" Class="mt-2">Domain Score</MudText>
+                <MudChip Size="Size.Small" Style="@($"background: {GetScoreColor(_domainDetail.Score.Score)}; color: white;")">
+                    Grade @_domainDetail.Score.Grade
+                </MudChip>
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="6" md="2">
+            <MudPaper Class="pa-4" Elevation="2" Style="border-radius: 12px; text-align: center; border-left: 4px solid #f44336;">
+                <MudText Typo="Typo.h4" Style="color: #f44336; font-weight: 600;">@_domainDetail.Score.CriticalCount</MudText>
+                <MudText Typo="Typo.body2">Critical</MudText>
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="6" md="2">
+            <MudPaper Class="pa-4" Elevation="2" Style="border-radius: 12px; text-align: center; border-left: 4px solid #ff9800;">
+                <MudText Typo="Typo.h4" Style="color: #ff9800; font-weight: 600;">@_domainDetail.Score.HighCount</MudText>
+                <MudText Typo="Typo.body2">High</MudText>
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="6" md="2">
+            <MudPaper Class="pa-4" Elevation="2" Style="border-radius: 12px; text-align: center; border-left: 4px solid #2196f3;">
+                <MudText Typo="Typo.h4" Style="color: #2196f3; font-weight: 600;">@_domainDetail.Score.MediumCount</MudText>
+                <MudText Typo="Typo.body2">Medium</MudText>
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="6" md="3">
+            <MudPaper Class="pa-4" Elevation="2" Style="border-radius: 12px; text-align: center; border-left: 4px solid #4caf50;">
+                <MudText Typo="Typo.h4" Style="color: #4caf50; font-weight: 600;">@_domainDetail.Score.PassedChecks</MudText>
+                <MudText Typo="Typo.body2">Passed Checks</MudText>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    <!-- Metrics Cards -->
+    @if (_domainDetail.Metrics.Any())
+    {
+        <MudPaper Class="pa-4 mb-4" Elevation="2" Style="border-radius: 12px;">
+            <MudText Typo="Typo.h6" Class="mb-3">Key Metrics</MudText>
+            <MudGrid>
+                @foreach (var metric in _domainDetail.Metrics.Take(8))
+                {
+                    <MudItem xs="6" sm="4" md="3" lg="2">
+                        <div class="metric-card pa-3" style="background: #f5f5f5; border-radius: 8px;">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">@FormatMetricName(metric.Key)</MudText>
+                            <MudText Typo="Typo.h6" Style="font-weight: 600;">@metric.Value</MudText>
+                        </div>
+                    </MudItem>
+                }
+            </MudGrid>
+        </MudPaper>
+    }
+
+    <!-- DLP Coverage Overview -->
+    <MudPaper Class="pa-4 mb-4" Elevation="2" Style="border-radius: 12px;">
+        <MudText Typo="Typo.h6" Class="mb-3">Data Protection Coverage</MudText>
+        <MudGrid>
+            <MudItem xs="12" md="4">
+                <div class="d-flex align-center mb-2">
+                    <MudIcon Icon="@Icons.Material.Filled.Label" Color="Color.Primary" Class="mr-2" />
+                    <MudText Typo="Typo.subtitle1">Sensitivity Labels</MudText>
+                </div>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">
+                    Classify and protect sensitive documents
+                </MudText>
+                @{
+                    var labelsCount = GetMetricValue("sensitivityLabelsCount");
+                    var publishedLabels = GetMetricValue("publishedLabelsCount");
+                }
+                <MudText Typo="Typo.h5" Class="mt-2">@labelsCount</MudText>
+                <MudText Typo="Typo.caption">@publishedLabels published</MudText>
+            </MudItem>
+
+            <MudItem xs="12" md="4">
+                <div class="d-flex align-center mb-2">
+                    <MudIcon Icon="@Icons.Material.Filled.Security" Color="Color.Primary" Class="mr-2" />
+                    <MudText Typo="Typo.subtitle1">DLP Policies</MudText>
+                </div>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">
+                    Prevent data loss across workloads
+                </MudText>
+                @{
+                    var dlpCount = GetMetricValue("dlpPoliciesCount");
+                    var enabledDlp = GetMetricValue("enabledDlpPolicies");
+                }
+                <MudText Typo="Typo.h5" Class="mt-2">@dlpCount</MudText>
+                <MudText Typo="Typo.caption">@enabledDlp enabled</MudText>
+            </MudItem>
+
+            <MudItem xs="12" md="4">
+                <div class="d-flex align-center mb-2">
+                    <MudIcon Icon="@Icons.Material.Filled.Schedule" Color="Color.Primary" Class="mr-2" />
+                    <MudText Typo="Typo.subtitle1">Retention Labels</MudText>
+                </div>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">
+                    Manage document lifecycle
+                </MudText>
+                @{
+                    var retentionCount = GetMetricValue("retentionLabelsCount");
+                }
+                <MudText Typo="Typo.h5" Class="mt-2">@retentionCount</MudText>
+                <MudText Typo="Typo.caption">configured</MudText>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    <!-- Recommendations -->
+    @if (_domainDetail.Recommendations.Any())
+    {
+        <MudPaper Class="pa-4 mb-4" Elevation="2" Style="border-radius: 12px; border-left: 4px solid #E0FC8E;">
+            <MudText Typo="Typo.h6" Class="mb-3">Top Recommendations</MudText>
+            <MudList Dense="true">
+                @foreach (var rec in _domainDetail.Recommendations.Take(5))
+                {
+                    <MudListItem Icon="@Icons.Material.Filled.Lightbulb" IconColor="Color.Warning">
+                        @rec
+                    </MudListItem>
+                }
+            </MudList>
+        </MudPaper>
+    }
+
+    <!-- Findings Table -->
+    <MudPaper Class="pa-4" Elevation="2" Style="border-radius: 12px;">
+        <div class="d-flex justify-space-between align-center mb-4">
+            <MudText Typo="Typo.h6">Findings</MudText>
+            <div class="d-flex gap-2">
+                <MudSelect T="DomainSeverity?" Label="Severity" @bind-Value="_severityFilter" Variant="Variant.Outlined"
+                           Dense="true" Clearable="true" Style="min-width: 120px;">
+                    <MudSelectItem Value="@((DomainSeverity?)DomainSeverity.Critical)">Critical</MudSelectItem>
+                    <MudSelectItem Value="@((DomainSeverity?)DomainSeverity.High)">High</MudSelectItem>
+                    <MudSelectItem Value="@((DomainSeverity?)DomainSeverity.Medium)">Medium</MudSelectItem>
+                    <MudSelectItem Value="@((DomainSeverity?)DomainSeverity.Low)">Low</MudSelectItem>
+                </MudSelect>
+                <MudSelect T="bool?" Label="Status" @bind-Value="_complianceFilter" Variant="Variant.Outlined"
+                           Dense="true" Clearable="true" Style="min-width: 120px;">
+                    <MudSelectItem Value="@((bool?)true)">Compliant</MudSelectItem>
+                    <MudSelectItem Value="@((bool?)false)">Non-Compliant</MudSelectItem>
+                </MudSelect>
+            </div>
+        </div>
+
+        <MudTable Items="@FilteredFindings" Hover="true" Dense="true" Striped="true" Breakpoint="Breakpoint.Sm"
+                  RowsPerPage="10">
+            <HeaderContent>
+                <MudTh>Severity</MudTh>
+                <MudTh>Status</MudTh>
+                <MudTh>Title</MudTh>
+                <MudTh>Category</MudTh>
+                <MudTh>Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>
+                    <MudChip Size="Size.Small" Color="@GetSeverityColor(context.Severity)" Variant="Variant.Filled">
+                        @context.Severity
+                    </MudChip>
+                </MudTd>
+                <MudTd>
+                    @if (context.IsCompliant)
+                    {
+                        <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" Size="Size.Small" />
+                    }
+                    else
+                    {
+                        <MudIcon Icon="@Icons.Material.Filled.Cancel" Color="Color.Error" Size="Size.Small" />
+                    }
+                </MudTd>
+                <MudTd>
+                    <MudText Typo="Typo.body2" Style="font-weight: 500;">@context.Title</MudText>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary" Style="max-width: 400px;">
+                        @context.Description
+                    </MudText>
+                </MudTd>
+                <MudTd>
+                    <MudChip Size="Size.Small" Variant="Variant.Outlined">@(context.Category ?? "General")</MudChip>
+                </MudTd>
+                <MudTd>
+                    <MudIconButton Icon="@Icons.Material.Filled.Info" Size="Size.Small"
+                                   OnClick="@(() => ShowFindingDetails(context))" />
+                </MudTd>
+            </RowTemplate>
+            <PagerContent>
+                <MudTablePager PageSizeOptions="new int[] { 10, 25, 50, 100 }" />
+            </PagerContent>
+        </MudTable>
+    </MudPaper>
+}
+
+<!-- Finding Details Dialog -->
+<MudDialog @bind-IsVisible="_showFindingDialog" Options="@(new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true })">
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.Lock" Class="mr-2" />
+            @_selectedFinding?.Title
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (_selectedFinding != null)
+        {
+            <div class="mb-4">
+                <MudChip Size="Size.Small" Color="@GetSeverityColor(_selectedFinding.Severity)" Class="mr-2">
+                    @_selectedFinding.Severity
+                </MudChip>
+                @if (_selectedFinding.IsCompliant)
+                {
+                    <MudChip Size="Size.Small" Color="Color.Success">Compliant</MudChip>
+                }
+                else
+                {
+                    <MudChip Size="Size.Small" Color="Color.Error">Non-Compliant</MudChip>
+                }
+            </div>
+
+            <MudText Typo="Typo.subtitle2" Class="mb-1">Description</MudText>
+            <MudText Typo="Typo.body2" Class="mb-4">@_selectedFinding.Description</MudText>
+
+            @if (!string.IsNullOrEmpty(_selectedFinding.Remediation))
+            {
+                <MudText Typo="Typo.subtitle2" Class="mb-1">Remediation</MudText>
+                <MudAlert Severity="Severity.Info" Dense="true" Class="mb-4">
+                    @_selectedFinding.Remediation
+                </MudAlert>
+            }
+
+            @if (!string.IsNullOrEmpty(_selectedFinding.References))
+            {
+                <MudText Typo="Typo.subtitle2" Class="mb-1">References</MudText>
+                <MudLink Href="@_selectedFinding.References" Target="_blank">@_selectedFinding.References</MudLink>
+            }
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => _showFindingDialog = false)">Close</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [Parameter]
+    public Guid? TenantId { get; set; }
+
+    [Parameter]
+    public Guid? RunId { get; set; }
+
+    private bool _isLoading = true;
+    private List<TenantDto> _tenants = new();
+    private Guid? _selectedTenantId;
+    private DomainDetailDto? _domainDetail;
+
+    private DomainSeverity? _severityFilter;
+    private bool? _complianceFilter;
+    private bool _showFindingDialog;
+    private FindingDto? _selectedFinding;
+
+    private IEnumerable<FindingDto> FilteredFindings => _domainDetail?.Findings
+        .Where(f => !_severityFilter.HasValue || f.Severity == _severityFilter.Value)
+        .Where(f => !_complianceFilter.HasValue || f.IsCompliant == _complianceFilter.Value)
+        ?? Enumerable.Empty<FindingDto>();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _tenants = (await TenantService.GetAllAsync()).ToList();
+
+        if (TenantId.HasValue)
+        {
+            _selectedTenantId = TenantId;
+        }
+        else if (_tenants.Any())
+        {
+            _selectedTenantId = _tenants.First().Id;
+        }
+
+        await LoadDataAsync();
+    }
+
+    private async Task LoadDataAsync()
+    {
+        if (!RunId.HasValue && _selectedTenantId.HasValue)
+        {
+            var runs = await AssessmentService.GetRunsByTenantAsync(_selectedTenantId.Value, 1);
+            var latestRun = runs.FirstOrDefault();
+            if (latestRun != null)
+            {
+                RunId = latestRun.Id;
+            }
+        }
+
+        if (!RunId.HasValue)
+        {
+            _isLoading = false;
+            return;
+        }
+
+        _isLoading = true;
+
+        try
+        {
+            _domainDetail = await AssessmentService.GetDomainDetailAsync(RunId.Value, AssessmentDomain.DataProtectionCompliance);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading DLP data: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private int GetMetricValue(string key)
+    {
+        if (_domainDetail?.Metrics.TryGetValue(key, out var value) == true)
+        {
+            return value is int intVal ? intVal : 0;
+        }
+        return 0;
+    }
+
+    private void ShowFindingDetails(FindingDto finding)
+    {
+        _selectedFinding = finding;
+        _showFindingDialog = true;
+    }
+
+    private async Task ExportReport()
+    {
+        if (!RunId.HasValue) return;
+
+        try
+        {
+            await AssessmentService.ExportDomainReportAsync(RunId.Value, AssessmentDomain.DataProtectionCompliance, ReportFormat.Pdf);
+            Snackbar.Add("Report exported successfully", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error exporting report: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private string GetScoreColor(int score) => score switch
+    {
+        >= 90 => "#4CAF50",
+        >= 80 => "#8BC34A",
+        >= 70 => "#FFC107",
+        >= 60 => "#FF9800",
+        _ => "#f44336"
+    };
+
+    private Color GetScoreProgressColor(int score) => score switch
+    {
+        >= 90 => Color.Success,
+        >= 70 => Color.Warning,
+        _ => Color.Error
+    };
+
+    private Color GetSeverityColor(DomainSeverity severity) => severity switch
+    {
+        DomainSeverity.Critical => Color.Error,
+        DomainSeverity.High => Color.Warning,
+        DomainSeverity.Medium => Color.Info,
+        _ => Color.Default
+    };
+
+    private string FormatMetricName(string name)
+    {
+        return System.Text.RegularExpressions.Regex.Replace(name, "(\\B[A-Z])", " $1");
+    }
+}

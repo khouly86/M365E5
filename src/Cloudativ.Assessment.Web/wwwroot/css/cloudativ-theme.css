@@ -1,0 +1,233 @@
+/* Cloudativ Brand Theme
+ * Primary Light Green: #E0FC8E
+ * Dark Blue/Grey: #51627A
+ * Light Blue: #B6CBE0
+ * Accent Orange: #EF7348
+ */
+
+:root {
+    --cloudativ-primary: #E0FC8E;
+    --cloudativ-secondary: #51627A;
+    --cloudativ-tertiary: #B6CBE0;
+    --cloudativ-accent: #EF7348;
+    --cloudativ-bg-light: #FAFAFA;
+}
+
+/* Header styling */
+.mud-appbar {
+    background: linear-gradient(135deg, var(--cloudativ-secondary) 0%, #3d4a5c 100%) !important;
+}
+
+/* Drawer styling */
+.mud-drawer {
+    background: var(--cloudativ-secondary) !important;
+}
+
+.mud-drawer .mud-nav-link {
+    color: rgba(255, 255, 255, 0.85) !important;
+}
+
+.mud-drawer .mud-nav-link:hover {
+    background: rgba(224, 252, 142, 0.15) !important;
+    color: var(--cloudativ-primary) !important;
+}
+
+.mud-drawer .mud-nav-link.active {
+    background: rgba(224, 252, 142, 0.25) !important;
+    color: var(--cloudativ-primary) !important;
+    border-left: 3px solid var(--cloudativ-primary);
+}
+
+/* Button styling */
+.mud-button-filled.mud-button-primary {
+    background-color: var(--cloudativ-secondary) !important;
+}
+
+.mud-button-filled.mud-button-primary:hover {
+    background-color: #3d4a5c !important;
+}
+
+.mud-button-outlined.mud-button-primary {
+    border-color: var(--cloudativ-secondary) !important;
+    color: var(--cloudativ-secondary) !important;
+}
+
+/* Card hover effects */
+.dashboard-card {
+    position: relative;
+    overflow: hidden;
+}
+
+.dashboard-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: linear-gradient(90deg, var(--cloudativ-primary), var(--cloudativ-tertiary));
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+.dashboard-card:hover::before {
+    opacity: 1;
+}
+
+/* Logo placeholder styling */
+.cloudativ-logo-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Oval decorations for backgrounds */
+.oval-bg-decoration {
+    position: absolute;
+    border-radius: 50%;
+    background: var(--cloudativ-primary);
+    opacity: 0.05;
+    pointer-events: none;
+}
+
+/* Score badges */
+.score-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px 12px;
+    border-radius: 16px;
+    font-weight: 600;
+    font-size: 0.875rem;
+}
+
+.score-badge.grade-a {
+    background: #E8F5E9;
+    color: #2E7D32;
+}
+
+.score-badge.grade-b {
+    background: #F1F8E9;
+    color: #558B2F;
+}
+
+.score-badge.grade-c {
+    background: #FFF8E1;
+    color: #F9A825;
+}
+
+.score-badge.grade-d {
+    background: #FFF3E0;
+    color: #EF6C00;
+}
+
+.score-badge.grade-f {
+    background: #FFEBEE;
+    color: #C62828;
+}
+
+/* Severity colors */
+.severity-critical {
+    color: #D32F2F;
+    background: #FFEBEE;
+}
+
+.severity-high {
+    color: #E65100;
+    background: #FFF3E0;
+}
+
+.severity-medium {
+    color: #1976D2;
+    background: #E3F2FD;
+}
+
+.severity-low {
+    color: #757575;
+    background: #F5F5F5;
+}
+
+/* Progress indicators */
+.mud-progress-circular svg circle {
+    stroke-linecap: round;
+}
+
+/* Tables */
+.mud-table-head {
+    background: #F5F5F5;
+}
+
+.mud-table-cell {
+    border-bottom: 1px solid #E0E0E0 !important;
+}
+
+/* Charts */
+.mud-chart {
+    font-family: 'Poppins', sans-serif;
+}
+
+/* Alerts */
+.mud-alert-filled.mud-alert-info {
+    background: var(--cloudativ-tertiary) !important;
+    color: var(--cloudativ-secondary) !important;
+}
+
+/* Dialog styling */
+.mud-dialog {
+    border-radius: 16px !important;
+}
+
+.mud-dialog-title {
+    background: linear-gradient(135deg, var(--cloudativ-secondary) 0%, #3d4a5c 100%);
+    color: white !important;
+    padding: 16px 24px !important;
+}
+
+/* Metric cards */
+.metric-card {
+    transition: all 0.2s ease;
+}
+
+.metric-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+/* Report header for PDF/HTML exports */
+.report-header {
+    background: linear-gradient(135deg, var(--cloudativ-secondary) 0%, #3d4a5c 100%);
+    color: white;
+    padding: 24px;
+    border-radius: 8px 8px 0 0;
+}
+
+.report-logo-placeholder {
+    width: 120px;
+    height: 40px;
+    background: var(--cloudativ-primary);
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--cloudativ-secondary);
+    font-weight: 600;
+}
+
+/* Print styles */
+@media print {
+    .mud-drawer,
+    .mud-appbar,
+    .no-print {
+        display: none !important;
+    }
+
+    .mud-main-content {
+        padding: 0 !important;
+        margin: 0 !important;
+    }
+
+    .report-header {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+}

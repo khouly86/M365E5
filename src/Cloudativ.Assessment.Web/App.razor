@@ -1,0 +1,78 @@
+@using Microsoft.AspNetCore.Components.Authorization
+
+<MudThemeProvider Theme="_cloudativTheme" />
+<MudDialogProvider />
+<MudSnackbarProvider />
+
+<CascadingAuthenticationState>
+    <Router AppAssembly="@typeof(App).Assembly">
+        <Found Context="routeData">
+            <AuthorizeRouteView RouteData="@routeData" DefaultLayout="@typeof(Shared.MainLayout)">
+                <NotAuthorized>
+                    @if (context.User.Identity?.IsAuthenticated != true)
+                    {
+                        <RedirectToLogin />
+                    }
+                    else
+                    {
+                        <p class="text-danger">You are not authorized to access this resource.</p>
+                    }
+                </NotAuthorized>
+            </AuthorizeRouteView>
+            <FocusOnNavigate RouteData="@routeData" Selector="h1" />
+        </Found>
+        <NotFound>
+            <PageTitle>Not found</PageTitle>
+            <LayoutView Layout="@typeof(Shared.MainLayout)">
+                <MudContainer MaxWidth="MaxWidth.Small" Class="mt-16">
+                    <MudPaper Class="pa-8 text-center">
+                        <MudIcon Icon="@Icons.Material.Filled.SearchOff" Size="Size.Large" Color="Color.Primary" />
+                        <MudText Typo="Typo.h4" Class="mt-4">Page Not Found</MudText>
+                        <MudText Typo="Typo.body1" Class="mt-2">The page you are looking for doesn't exist.</MudText>
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="/" Class="mt-4">
+                            Go to Home
+                        </MudButton>
+                    </MudPaper>
+                </MudContainer>
+            </LayoutView>
+        </NotFound>
+    </Router>
+</CascadingAuthenticationState>
+
+@code {
+    private MudTheme _cloudativTheme = new MudTheme()
+    {
+        Palette = new PaletteLight()
+        {
+            Primary = "#51627A",
+            Secondary = "#E0FC8E",
+            Tertiary = "#B6CBE0",
+            Error = "#EF7348",
+            Background = "#FAFAFA",
+            Surface = "#FFFFFF",
+            DrawerBackground = "#51627A",
+            DrawerText = "#FFFFFF",
+            AppbarBackground = "#51627A",
+            AppbarText = "#FFFFFF",
+            TextPrimary = "#424242",
+            TextSecondary = "#666666"
+        },
+        Typography = new Typography()
+        {
+            Default = new Default()
+            {
+                FontFamily = new[] { "Poppins", "Roboto", "sans-serif" }
+            },
+            H1 = new H1() { FontWeight = 600 },
+            H2 = new H2() { FontWeight = 600 },
+            H3 = new H3() { FontWeight = 500 },
+            H4 = new H4() { FontWeight = 500 },
+            H5 = new H5() { FontWeight = 500 },
+            H6 = new H6() { FontWeight = 500 }
+        },
+        LayoutProperties = new LayoutProperties()
+        {
+            DefaultBorderRadius = "8px"
+        }
+    };
+}
