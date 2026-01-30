@@ -31,6 +31,7 @@ public class AssessmentEngine : IAssessmentEngine
     private readonly IGraphClientFactory _graphClientFactory;
     private readonly IEnumerable<IAssessmentModule> _modules;
     private readonly IScoringService _scoringService;
+    private readonly ISubscriptionService _subscriptionService;
     private readonly ILogger<AssessmentEngine> _logger;
 
     public event EventHandler<AssessmentProgressEventArgs>? ProgressChanged;
@@ -40,12 +41,14 @@ public class AssessmentEngine : IAssessmentEngine
         IGraphClientFactory graphClientFactory,
         IEnumerable<IAssessmentModule> modules,
         IScoringService scoringService,
+        ISubscriptionService subscriptionService,
         ILogger<AssessmentEngine> logger)
     {
         _unitOfWork = unitOfWork;
         _graphClientFactory = graphClientFactory;
         _modules = modules;
         _scoringService = scoringService;
+        _subscriptionService = subscriptionService;
         _logger = logger;
     }
 
@@ -54,6 +57,15 @@ public class AssessmentEngine : IAssessmentEngine
         var tenant = await _unitOfWork.Tenants.GetByIdAsync(tenantId, cancellationToken);
         if (tenant == null)
             throw new InvalidOperationException($"Tenant with ID '{tenantId}' not found");
+
+        // Check subscription limits
+        var canRun = await _subscriptionService.CanRunAssessmentAsync(tenantId, cancellationToken);
+        if (!canRun)
+        {
+            var usage = await _subscriptionService.GetUsageAsync(tenantId, cancellationToken);
+            var message = usage.LimitReachedMessage ?? "Assessment limit reached. Please upgrade your subscription.";
+            throw new InvalidOperationException(message);
+        }
 
         var domainsToAssess = domains ?? Enum.GetValues<AssessmentDomain>().ToList();
 
@@ -217,6 +229,12 @@ public class AssessmentEngine : IAssessmentEngine
 
             await _unitOfWork.AssessmentRuns.UpdateAsync(run, cancellationToken);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+            // Increment assessment count on successful completion
+            if (run.Status == AssessmentStatus.Completed)
+            {
+                await _subscriptionService.IncrementAssessmentCountAsync(run.TenantId, cancellationToken);
+            }
 
             ReportProgress(runId, 100, "Assessment completed", null);
             _logger.LogInformation("Assessment run {RunId} completed with overall score {Score}", runId, overallScore);

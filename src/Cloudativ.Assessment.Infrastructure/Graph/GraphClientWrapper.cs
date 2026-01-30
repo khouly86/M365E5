@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Azure.Core;
 using Azure.Identity;
 using Cloudativ.Assessment.Domain.Interfaces;
 using Microsoft.Graph;
@@ -10,12 +11,12 @@ public class GraphClientWrapper : IGraphClientWrapper
 {
     private readonly GraphServiceClient _graphClient;
     private readonly ILogger<GraphClientWrapper> _logger;
-    private readonly ClientSecretCredential? _credential;
+    private readonly TokenCredential? _credential;
     private List<string>? _cachedPermissions;
 
     public GraphClientWrapper(
         GraphServiceClient graphClient,
-        ClientSecretCredential? credential,
+        TokenCredential? credential,
         ILogger<GraphClientWrapper> logger)
     {
         _graphClient = graphClient;

@@ -1,0 +1,353 @@
+@page "/admin/subscriptions"
+@attribute [Authorize(Roles = "Admin")]
+@inject ISubscriptionService SubscriptionService
+@inject ITenantService TenantService
+@inject ISnackbar Snackbar
+
+<PageTitle>Subscriptions - Admin - Cloudativ Assessment</PageTitle>
+
+<div class="d-flex justify-space-between align-center mb-4">
+    <div>
+        <MudText Typo="Typo.h5" Style="font-weight: 600; color: #51627A;">Subscription Management</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">View and manage all tenant subscriptions</MudText>
+    </div>
+    <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Refresh"
+               OnClick="LoadDataAsync">
+        Refresh
+    </MudButton>
+</div>
+
+@if (_isLoading)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+}
+else
+{
+    <!-- Summary Cards -->
+    <MudGrid Class="mb-4">
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="2" Style="border-radius: 12px;">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Total Subscriptions</MudText>
+                <MudText Typo="Typo.h4" Style="font-weight: 600;">@_subscriptions.Count</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="2" Style="border-radius: 12px;">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Active</MudText>
+                <MudText Typo="Typo.h4" Style="font-weight: 600; color: #4CAF50;">
+                    @_subscriptions.Count(s => s.Status == SubscriptionStatus.Active)
+                </MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="2" Style="border-radius: 12px;">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Trial</MudText>
+                <MudText Typo="Typo.h4" Style="font-weight: 600; color: #2196F3;">
+                    @_subscriptions.Count(s => s.Status == SubscriptionStatus.Trial)
+                </MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="2" Style="border-radius: 12px;">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Expired/Cancelled</MudText>
+                <MudText Typo="Typo.h4" Style="font-weight: 600; color: #f44336;">
+                    @_subscriptions.Count(s => s.Status == SubscriptionStatus.Expired || s.Status == SubscriptionStatus.Cancelled)
+                </MudText>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    <!-- Filters -->
+    <MudPaper Class="pa-4 mb-4" Elevation="2" Style="border-radius: 12px;">
+        <MudGrid>
+            <MudItem xs="12" sm="6" md="3">
+                <MudTextField @bind-Value="_searchTerm" Label="Search" Placeholder="Search by tenant name..."
+                              Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                              Immediate="true" />
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudSelect @bind-Value="_statusFilter" Label="Status" Clearable="true">
+                    <MudSelectItem Value="@((SubscriptionStatus?)null)">All</MudSelectItem>
+                    @foreach (var status in Enum.GetValues<SubscriptionStatus>())
+                    {
+                        <MudSelectItem Value="@((SubscriptionStatus?)status)">@status</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudSelect @bind-Value="_planFilter" Label="Plan" Clearable="true">
+                    <MudSelectItem Value="@((SubscriptionPlan?)null)">All</MudSelectItem>
+                    @foreach (var plan in Enum.GetValues<SubscriptionPlan>())
+                    {
+                        <MudSelectItem Value="@((SubscriptionPlan?)plan)">@plan</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    <!-- Subscriptions Table -->
+    <MudPaper Class="pa-4" Elevation="2" Style="border-radius: 12px;">
+        <MudTable Items="@FilteredSubscriptions" Hover="true" Dense="true" Striped="true"
+                  Loading="@_isLoading" LoadingProgressColor="Color.Primary">
+            <HeaderContent>
+                <MudTh><MudTableSortLabel SortBy="new Func<SubscriptionDto, object>(x => x.TenantName)">Tenant</MudTableSortLabel></MudTh>
+                <MudTh><MudTableSortLabel SortBy="new Func<SubscriptionDto, object>(x => x.Plan)">Plan</MudTableSortLabel></MudTh>
+                <MudTh><MudTableSortLabel SortBy="new Func<SubscriptionDto, object>(x => x.Status)">Status</MudTableSortLabel></MudTh>
+                <MudTh>Usage</MudTh>
+                <MudTh><MudTableSortLabel SortBy="new Func<SubscriptionDto, object>(x => x.StartDate)">Start Date</MudTableSortLabel></MudTh>
+                <MudTh><MudTableSortLabel SortBy="new Func<SubscriptionDto, object>(x => x.EndDate)">End Date</MudTableSortLabel></MudTh>
+                <MudTh>Days Left</MudTh>
+                <MudTh>Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Tenant">
+                    <div>
+                        <MudText Typo="Typo.body2" Style="font-weight: 500;">@context.TenantName</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">@context.TenantId.ToString()[..8]...</MudText>
+                    </div>
+                </MudTd>
+                <MudTd DataLabel="Plan">
+                    <MudChip Size="Size.Small" Color="@GetPlanColor(context.Plan)" Variant="Variant.Filled">
+                        @context.Plan
+                    </MudChip>
+                </MudTd>
+                <MudTd DataLabel="Status">
+                    <MudChip Size="Size.Small" Color="@GetStatusColor(context.Status)" Variant="Variant.Filled">
+                        @context.Status
+                    </MudChip>
+                </MudTd>
+                <MudTd DataLabel="Usage">
+                    @if (context.MonthlyAssessmentLimit == -1)
+                    {
+                        <span>@context.AssessmentsUsedThisMonth / Unlimited</span>
+                    }
+                    else
+                    {
+                        <div style="min-width: 100px;">
+                            <span>@context.AssessmentsUsedThisMonth / @context.MonthlyAssessmentLimit</span>
+                            <MudProgressLinear Value="@GetUsagePercentage(context)" Size="Size.Small" Class="mt-1"
+                                               Color="@(GetUsagePercentage(context) >= 90 ? Color.Error : GetUsagePercentage(context) >= 70 ? Color.Warning : Color.Primary)" />
+                        </div>
+                    }
+                </MudTd>
+                <MudTd DataLabel="Start Date">@context.StartDate.ToString("MMM dd, yyyy")</MudTd>
+                <MudTd DataLabel="End Date">@context.EndDate.ToString("MMM dd, yyyy")</MudTd>
+                <MudTd DataLabel="Days Left">
+                    @if (context.DaysRemaining <= 7 && context.Status != SubscriptionStatus.Expired)
+                    {
+                        <MudChip Size="Size.Small" Color="Color.Warning">@context.DaysRemaining days</MudChip>
+                    }
+                    else if (context.Status == SubscriptionStatus.Expired)
+                    {
+                        <MudChip Size="Size.Small" Color="Color.Error">Expired</MudChip>
+                    }
+                    else
+                    {
+                        <span>@context.DaysRemaining days</span>
+                    }
+                </MudTd>
+                <MudTd DataLabel="Actions">
+                    <MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="Size.Small"
+                                   OnClick="@(() => ViewSubscription(context))"
+                                   Title="View Details" />
+                    @if (context.Status != SubscriptionStatus.Cancelled)
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.Cancel" Size="Size.Small" Color="Color.Error"
+                                       OnClick="@(() => ShowCancelDialog(context))"
+                                       Title="Cancel Subscription" />
+                    }
+                </MudTd>
+            </RowTemplate>
+            <PagerContent>
+                <MudTablePager PageSizeOptions="new int[] { 10, 25, 50, 100 }" />
+            </PagerContent>
+        </MudTable>
+    </MudPaper>
+}
+
+<!-- View Subscription Dialog -->
+<MudDialog @bind-Visible="_showViewDialog" Options="@(new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true })">
+    <TitleContent>
+        <MudText Typo="Typo.h6">Subscription Details</MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (_selectedSubscription != null)
+        {
+            <MudGrid>
+                <MudItem xs="6">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Tenant</MudText>
+                    <MudText Typo="Typo.body1">@_selectedSubscription.TenantName</MudText>
+                </MudItem>
+                <MudItem xs="6">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Plan</MudText>
+                    <MudChip Size="Size.Small" Color="@GetPlanColor(_selectedSubscription.Plan)">
+                        @_selectedSubscription.Plan
+                    </MudChip>
+                </MudItem>
+                <MudItem xs="6">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Status</MudText>
+                    <MudChip Size="Size.Small" Color="@GetStatusColor(_selectedSubscription.Status)">
+                        @_selectedSubscription.Status
+                    </MudChip>
+                </MudItem>
+                <MudItem xs="6">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Days Remaining</MudText>
+                    <MudText Typo="Typo.body1">@_selectedSubscription.DaysRemaining</MudText>
+                </MudItem>
+                <MudItem xs="6">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Start Date</MudText>
+                    <MudText Typo="Typo.body1">@_selectedSubscription.StartDate.ToString("MMM dd, yyyy")</MudText>
+                </MudItem>
+                <MudItem xs="6">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">End Date</MudText>
+                    <MudText Typo="Typo.body1">@_selectedSubscription.EndDate.ToString("MMM dd, yyyy")</MudText>
+                </MudItem>
+                <MudItem xs="6">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Monthly Limit</MudText>
+                    <MudText Typo="Typo.body1">
+                        @(_selectedSubscription.MonthlyAssessmentLimit == -1 ? "Unlimited" : _selectedSubscription.MonthlyAssessmentLimit.ToString())
+                    </MudText>
+                </MudItem>
+                <MudItem xs="6">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Used This Month</MudText>
+                    <MudText Typo="Typo.body1">@_selectedSubscription.AssessmentsUsedThisMonth</MudText>
+                </MudItem>
+                @if (!string.IsNullOrEmpty(_selectedSubscription.StripeCustomerId))
+                {
+                    <MudItem xs="12">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Stripe Customer ID</MudText>
+                        <MudText Typo="Typo.body2" Style="font-family: monospace;">@_selectedSubscription.StripeCustomerId</MudText>
+                    </MudItem>
+                }
+                @if (!string.IsNullOrEmpty(_selectedSubscription.StripeSubscriptionId))
+                {
+                    <MudItem xs="12">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Stripe Subscription ID</MudText>
+                        <MudText Typo="Typo.body2" Style="font-family: monospace;">@_selectedSubscription.StripeSubscriptionId</MudText>
+                    </MudItem>
+                }
+            </MudGrid>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => _showViewDialog = false)">Close</MudButton>
+    </DialogActions>
+</MudDialog>
+
+<!-- Cancel Confirmation Dialog -->
+<MudDialog @bind-Visible="_showCancelDialog">
+    <TitleContent>
+        <MudText Typo="Typo.h6">Cancel Subscription</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudAlert Severity="Severity.Warning" Class="mb-4">
+            Are you sure you want to cancel the subscription for <strong>@_selectedSubscription?.TenantName</strong>?
+        </MudAlert>
+        <MudText Typo="Typo.body2">
+            The subscription will remain active until the end of the current billing period.
+        </MudText>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => _showCancelDialog = false)">Keep Subscription</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Error" OnClick="CancelSubscription">
+            Cancel Subscription
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private bool _isLoading = true;
+    private IReadOnlyList<SubscriptionDto> _subscriptions = new List<SubscriptionDto>();
+
+    private string _searchTerm = string.Empty;
+    private SubscriptionStatus? _statusFilter;
+    private SubscriptionPlan? _planFilter;
+
+    private bool _showViewDialog;
+    private bool _showCancelDialog;
+    private SubscriptionDto? _selectedSubscription;
+
+    private IEnumerable<SubscriptionDto> FilteredSubscriptions => _subscriptions
+        .Where(s => string.IsNullOrEmpty(_searchTerm) || s.TenantName.Contains(_searchTerm, StringComparison.OrdinalIgnoreCase))
+        .Where(s => !_statusFilter.HasValue || s.Status == _statusFilter.Value)
+        .Where(s => !_planFilter.HasValue || s.Plan == _planFilter.Value);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDataAsync();
+    }
+
+    private async Task LoadDataAsync()
+    {
+        _isLoading = true;
+
+        try
+        {
+            _subscriptions = await SubscriptionService.GetAllAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading subscriptions: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private void ViewSubscription(SubscriptionDto subscription)
+    {
+        _selectedSubscription = subscription;
+        _showViewDialog = true;
+    }
+
+    private void ShowCancelDialog(SubscriptionDto subscription)
+    {
+        _selectedSubscription = subscription;
+        _showCancelDialog = true;
+    }
+
+    private async Task CancelSubscription()
+    {
+        if (_selectedSubscription == null) return;
+
+        try
+        {
+            await SubscriptionService.CancelAsync(_selectedSubscription.TenantId);
+            Snackbar.Add($"Subscription for {_selectedSubscription.TenantName} has been cancelled", Severity.Info);
+            _showCancelDialog = false;
+            await LoadDataAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error cancelling subscription: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private double GetUsagePercentage(SubscriptionDto subscription)
+    {
+        if (subscription.MonthlyAssessmentLimit == -1 || subscription.MonthlyAssessmentLimit == 0)
+            return 0;
+
+        return (double)subscription.AssessmentsUsedThisMonth / subscription.MonthlyAssessmentLimit * 100;
+    }
+
+    private Color GetPlanColor(SubscriptionPlan plan) => plan switch
+    {
+        SubscriptionPlan.Trial => Color.Info,
+        SubscriptionPlan.Monthly => Color.Primary,
+        SubscriptionPlan.Yearly => Color.Success,
+        _ => Color.Default
+    };
+
+    private Color GetStatusColor(SubscriptionStatus status) => status switch
+    {
+        SubscriptionStatus.Active => Color.Success,
+        SubscriptionStatus.Trial => Color.Info,
+        SubscriptionStatus.Expired => Color.Error,
+        SubscriptionStatus.Cancelled => Color.Warning,
+        SubscriptionStatus.PastDue => Color.Error,
+        _ => Color.Default
+    };
+}

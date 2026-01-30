@@ -1,0 +1,421 @@
+@page "/domains/pim"
+@page "/domains/pim/{TenantId:guid}/{RunId:guid}"
+@attribute [Authorize]
+@inject ITenantService TenantService
+@inject IAssessmentService AssessmentService
+@inject IReportService ReportService
+@inject IJSRuntime JSRuntime
+@inject NavigationManager NavigationManager
+@inject ISnackbar Snackbar
+
+<PageTitle>Privileged Access - Cloudativ Assessment</PageTitle>
+
+<DomainAuthorizationGuard Domain="AssessmentDomain.PrivilegedAccess" DomainDisplayName="Privileged Access">
+
+<div class="d-flex justify-space-between align-center mb-4">
+    <div>
+        <MudText Typo="Typo.h5" Style="font-weight: 600; color: #51627A;">Privileged Access Management</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">
+            PIM, admin roles, privileged accounts, and just-in-time access
+        </MudText>
+    </div>
+    <div class="d-flex gap-2">
+        <MudSelect T="Guid?" Label="Select Tenant" Value="_selectedTenantId" Variant="Variant.Outlined"
+                   Dense="true" Style="min-width: 200px;" ValueChanged="@OnTenantChanged">
+            @foreach (var tenant in _tenants)
+            {
+                <MudSelectItem Value="@((Guid?)tenant.Id)">@tenant.Name</MudSelectItem>
+            }
+        </MudSelect>
+        @if (_domainDetail != null && RunId.HasValue)
+        {
+            <MudMenu Label="Export Report" StartIcon="@Icons.Material.Filled.Download" EndIcon="@Icons.Material.Filled.KeyboardArrowDown"
+                     Color="Color.Primary" Variant="Variant.Filled" AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
+                <MudMenuItem OnClick="@ExportPdf" Icon="@Icons.Material.Filled.PictureAsPdf">Export as PDF</MudMenuItem>
+                <MudMenuItem OnClick="@ExportExcel" Icon="@Icons.Material.Filled.TableChart">Export as Excel</MudMenuItem>
+            </MudMenu>
+        }
+    </div>
+</div>
+
+@if (_isLoading)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="mb-4" />
+}
+else if (_domainDetail == null)
+{
+    <MudAlert Severity="Severity.Info" Class="mb-4">
+        Select a tenant and run an assessment to view Privileged Access findings.
+    </MudAlert>
+}
+else
+{
+    <!-- Score Overview -->
+    <MudGrid Class="mb-4">
+        <MudItem xs="12" md="3">
+            <MudPaper Class="pa-4" Elevation="2" Style="border-radius: 12px; text-align: center;">
+                <MudProgressCircular Color="@GetScoreProgressColor(_domainDetail.Score.Score)" Value="@_domainDetail.Score.Score"
+                                     Size="Size.Large" StrokeWidth="8">
+                    <span style="font-size: 1.5rem; font-weight: 600;">@_domainDetail.Score.Score%</span>
+                </MudProgressCircular>
+                <MudText Typo="Typo.h6" Class="mt-2">Domain Score</MudText>
+                <MudChip Size="Size.Small" Style="@($"background: {GetScoreColor(_domainDetail.Score.Score)}; color: white;")">
+                    Grade @_domainDetail.Score.Grade
+                </MudChip>
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="6" md="2">
+            <MudPaper Class="pa-4" Elevation="2" Style="border-radius: 12px; text-align: center; border-left: 4px solid #f44336;">
+                <MudText Typo="Typo.h4" Style="color: #f44336; font-weight: 600;">@_domainDetail.Score.CriticalCount</MudText>
+                <MudText Typo="Typo.body2">Critical</MudText>
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="6" md="2">
+            <MudPaper Class="pa-4" Elevation="2" Style="border-radius: 12px; text-align: center; border-left: 4px solid #ff9800;">
+                <MudText Typo="Typo.h4" Style="color: #ff9800; font-weight: 600;">@_domainDetail.Score.HighCount</MudText>
+                <MudText Typo="Typo.body2">High</MudText>
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="6" md="2">
+            <MudPaper Class="pa-4" Elevation="2" Style="border-radius: 12px; text-align: center; border-left: 4px solid #2196f3;">
+                <MudText Typo="Typo.h4" Style="color: #2196f3; font-weight: 600;">@_domainDetail.Score.MediumCount</MudText>
+                <MudText Typo="Typo.body2">Medium</MudText>
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="6" md="3">
+            <MudPaper Class="pa-4" Elevation="2" Style="border-radius: 12px; text-align: center; border-left: 4px solid #4caf50;">
+                <MudText Typo="Typo.h4" Style="color: #4caf50; font-weight: 600;">@_domainDetail.Score.PassedChecks</MudText>
+                <MudText Typo="Typo.body2">Passed Checks</MudText>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    <!-- PIM Overview -->
+    <MudPaper Class="pa-4 mb-4" Elevation="2" Style="border-radius: 12px;">
+        <MudText Typo="Typo.h6" Class="mb-3">Privileged Access Overview</MudText>
+        <MudGrid>
+            <MudItem xs="12" md="3">
+                <div class="d-flex align-center mb-2">
+                    <MudIcon Icon="@Icons.Material.Filled.SupervisorAccount" Color="Color.Primary" Class="mr-2" />
+                    <MudText Typo="Typo.subtitle1">Global Admins</MudText>
+                </div>
+                <MudText Typo="Typo.h5" Class="mt-2">@GetMetricValue("globalAdminCount")</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Permanent assignments</MudText>
+            </MudItem>
+
+            <MudItem xs="12" md="3">
+                <div class="d-flex align-center mb-2">
+                    <MudIcon Icon="@Icons.Material.Filled.AdminPanelSettings" Color="Color.Warning" Class="mr-2" />
+                    <MudText Typo="Typo.subtitle1">Privileged Roles</MudText>
+                </div>
+                <MudText Typo="Typo.h5" Class="mt-2">@GetMetricValue("privilegedRolesCount")</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Total privileged role assignments</MudText>
+            </MudItem>
+
+            <MudItem xs="12" md="3">
+                <div class="d-flex align-center mb-2">
+                    <MudIcon Icon="@Icons.Material.Filled.Schedule" Color="Color.Success" Class="mr-2" />
+                    <MudText Typo="Typo.subtitle1">PIM Enabled</MudText>
+                </div>
+                <MudText Typo="Typo.h5" Class="mt-2">@(GetMetricValue("pimEnabledRoles"))</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Just-in-time roles</MudText>
+            </MudItem>
+
+            <MudItem xs="12" md="3">
+                <div class="d-flex align-center mb-2">
+                    <MudIcon Icon="@Icons.Material.Filled.Warning" Color="Color.Error" Class="mr-2" />
+                    <MudText Typo="Typo.subtitle1">Standing Access</MudText>
+                </div>
+                <MudText Typo="Typo.h5" Class="mt-2">@GetMetricValue("standingAccessCount")</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Non-PIM protected</MudText>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    <!-- Metrics Cards -->
+    @if (_domainDetail.Metrics.Any())
+    {
+        <MudPaper Class="pa-4 mb-4" Elevation="2" Style="border-radius: 12px;">
+            <MudText Typo="Typo.h6" Class="mb-3">Key Metrics</MudText>
+            <MudGrid>
+                @foreach (var metric in _domainDetail.Metrics.Take(8))
+                {
+                    <MudItem xs="6" sm="4" md="3" lg="2">
+                        <div class="metric-card pa-3" style="background: #f5f5f5; border-radius: 8px;">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">@FormatMetricName(metric.Key)</MudText>
+                            <MudText Typo="Typo.h6" Style="font-weight: 600;">@metric.Value</MudText>
+                        </div>
+                    </MudItem>
+                }
+            </MudGrid>
+        </MudPaper>
+    }
+
+    <!-- Recommendations -->
+    @if (_domainDetail.Recommendations.Any())
+    {
+        <MudPaper Class="pa-4 mb-4" Elevation="2" Style="border-radius: 12px; border-left: 4px solid #E0FC8E;">
+            <MudText Typo="Typo.h6" Class="mb-3">Top Recommendations</MudText>
+            <MudList Dense="true">
+                @foreach (var rec in _domainDetail.Recommendations.Take(5))
+                {
+                    <MudListItem Icon="@Icons.Material.Filled.Lightbulb" IconColor="Color.Warning">
+                        @rec
+                    </MudListItem>
+                }
+            </MudList>
+        </MudPaper>
+    }
+
+    <!-- Findings Table -->
+    <MudPaper Class="pa-4" Elevation="2" Style="border-radius: 12px;">
+        <div class="d-flex justify-space-between align-center mb-4">
+            <MudText Typo="Typo.h6">Findings</MudText>
+            <div class="d-flex gap-2">
+                <MudSelect T="DomainSeverity?" Label="Severity" @bind-Value="_severityFilter" Variant="Variant.Outlined"
+                           Dense="true" Clearable="true" Style="min-width: 120px;">
+                    <MudSelectItem Value="@((DomainSeverity?)DomainSeverity.Critical)">Critical</MudSelectItem>
+                    <MudSelectItem Value="@((DomainSeverity?)DomainSeverity.High)">High</MudSelectItem>
+                    <MudSelectItem Value="@((DomainSeverity?)DomainSeverity.Medium)">Medium</MudSelectItem>
+                    <MudSelectItem Value="@((DomainSeverity?)DomainSeverity.Low)">Low</MudSelectItem>
+                </MudSelect>
+            </div>
+        </div>
+
+        <MudTable Items="@FilteredFindings" Hover="true" Dense="true" Striped="true" RowsPerPage="10"
+                  OnRowClick="@OnRowClick" T="FindingDto" RowClassFunc="@((item, _) => IsHighOrCritical(item) ? "clickable-row" : "")">
+            <HeaderContent>
+                <MudTh>Severity</MudTh>
+                <MudTh>Status</MudTh>
+                <MudTh>Title</MudTh>
+                <MudTh>Category</MudTh>
+                <MudTh>Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>
+                    <MudChip Size="Size.Small" Color="@GetSeverityColor(context.Severity)" Variant="Variant.Filled">
+                        @context.Severity
+                        @if (IsHighOrCritical(context))
+                        {
+                            <MudIcon Icon="@Icons.Material.Filled.TouchApp" Size="Size.Small" Class="ml-1" />
+                        }
+                    </MudChip>
+                </MudTd>
+                <MudTd>
+                    @if (context.IsCompliant)
+                    {
+                        <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" Size="Size.Small" />
+                    }
+                    else
+                    {
+                        <MudIcon Icon="@Icons.Material.Filled.Cancel" Color="Color.Error" Size="Size.Small" />
+                    }
+                </MudTd>
+                <MudTd>
+                    <MudText Typo="Typo.body2" Style="@(IsHighOrCritical(context) ? "font-weight: 600; cursor: pointer;" : "font-weight: 500;")">
+                        @context.Title
+                    </MudText>
+                </MudTd>
+                <MudTd>
+                    <MudChip Size="Size.Small" Variant="Variant.Outlined">@(context.Category ?? "General")</MudChip>
+                </MudTd>
+                <MudTd>
+                    <MudIconButton Icon="@Icons.Material.Filled.Info" Size="Size.Small"
+                                   OnClick="@(() => ShowFindingDetails(context))" />
+                </MudTd>
+            </RowTemplate>
+            <PagerContent>
+                <MudTablePager PageSizeOptions="new int[] { 10, 25, 50 }" />
+            </PagerContent>
+        </MudTable>
+    </MudPaper>
+}
+
+<!-- Finding Details Dialog -->
+<MudDialog @bind-IsVisible="_showFindingDialog" Options="@(new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true })">
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.AdminPanelSettings" Class="mr-2" />
+            @_selectedFinding?.Title
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (_selectedFinding != null)
+        {
+            <div class="mb-4">
+                <MudChip Size="Size.Small" Color="@GetSeverityColor(_selectedFinding.Severity)" Class="mr-2">@_selectedFinding.Severity</MudChip>
+                <MudChip Size="Size.Small" Color="@(_selectedFinding.IsCompliant ? Color.Success : Color.Error)">
+                    @(_selectedFinding.IsCompliant ? "Compliant" : "Non-Compliant")
+                </MudChip>
+                @if (!string.IsNullOrEmpty(_selectedFinding.Category))
+                {
+                    <MudChip Size="Size.Small" Variant="Variant.Outlined" Class="ml-2">@_selectedFinding.Category</MudChip>
+                }
+            </div>
+
+            <MudText Typo="Typo.subtitle2" Class="mb-1">Description</MudText>
+            <MudText Typo="Typo.body2" Class="mb-4">@_selectedFinding.Description</MudText>
+
+            @if (!string.IsNullOrEmpty(_selectedFinding.Remediation))
+            {
+                <MudText Typo="Typo.subtitle2" Class="mb-1">Remediation</MudText>
+                <MudAlert Severity="Severity.Info" Dense="true" Class="mb-4">@_selectedFinding.Remediation</MudAlert>
+            }
+
+            @if (_selectedFinding.AffectedResources.Any())
+            {
+                <MudText Typo="Typo.subtitle2" Class="mb-2">Affected Resources (@_selectedFinding.AffectedResources.Count)</MudText>
+                <MudPaper Elevation="0" Class="pa-3 mb-4" Style="background: #f5f5f5; border-radius: 8px; max-height: 200px; overflow-y: auto;">
+                    <MudList Dense="true">
+                        @foreach (var resource in _selectedFinding.AffectedResources)
+                        {
+                            <MudListItem Dense="true">
+                                <div class="d-flex align-center">
+                                    <MudIcon Icon="@Icons.Material.Filled.Warning" Size="Size.Small" Color="Color.Warning" Class="mr-2" />
+                                    <MudText Typo="Typo.body2">@resource</MudText>
+                                </div>
+                            </MudListItem>
+                        }
+                    </MudList>
+                </MudPaper>
+            }
+
+            @if (!string.IsNullOrEmpty(_selectedFinding.Evidence))
+            {
+                <MudText Typo="Typo.subtitle2" Class="mb-1">Evidence</MudText>
+                <MudPaper Elevation="0" Class="mb-4" Style="background: #1e1e1e; border-radius: 8px; max-height: 300px; overflow: auto;">
+                    <pre style="color: #d4d4d4; padding: 16px; margin: 0; font-size: 12px; white-space: pre-wrap; word-break: break-all;">@FormatJson(_selectedFinding.Evidence)</pre>
+                </MudPaper>
+            }
+
+            @if (!string.IsNullOrEmpty(_selectedFinding.References))
+            {
+                <MudText Typo="Typo.subtitle2" Class="mb-1">References</MudText>
+                <MudLink Href="@_selectedFinding.References" Target="_blank" Typo="Typo.body2">
+                    <MudIcon Icon="@Icons.Material.Filled.OpenInNew" Size="Size.Small" Class="mr-1" />
+                    @_selectedFinding.References
+                </MudLink>
+            }
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => _showFindingDialog = false)" Variant="Variant.Filled" Color="Color.Primary">Close</MudButton>
+    </DialogActions>
+</MudDialog>
+
+</DomainAuthorizationGuard>
+
+@code {
+    [Parameter] public Guid? TenantId { get; set; }
+    [Parameter] public Guid? RunId { get; set; }
+
+    private bool _isLoading = true;
+    private List<TenantDto> _tenants = new();
+    private Guid? _selectedTenantId;
+    private DomainDetailDto? _domainDetail;
+    private DomainSeverity? _severityFilter;
+    private bool _showFindingDialog;
+    private FindingDto? _selectedFinding;
+
+    private IEnumerable<FindingDto> FilteredFindings => _domainDetail?.Findings
+        .Where(f => !_severityFilter.HasValue || f.Severity == _severityFilter.Value)
+        ?? Enumerable.Empty<FindingDto>();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _tenants = (await TenantService.GetAllAsync()).ToList();
+        _selectedTenantId = TenantId ?? _tenants.FirstOrDefault()?.Id;
+        await LoadDataAsync();
+    }
+
+    private async Task OnTenantChanged(Guid? tenantId)
+    {
+        _selectedTenantId = tenantId;
+        RunId = null;
+        await LoadDataAsync();
+    }
+
+    private async Task LoadDataAsync()
+    {
+        if (!RunId.HasValue && _selectedTenantId.HasValue)
+        {
+            var runs = await AssessmentService.GetRunsByTenantAsync(_selectedTenantId.Value, 1);
+            RunId = runs.FirstOrDefault()?.Id;
+        }
+
+        if (!RunId.HasValue) { _isLoading = false; return; }
+
+        _isLoading = true;
+        try
+        {
+            _domainDetail = await AssessmentService.GetDomainDetailAsync(RunId.Value, AssessmentDomain.PrivilegedAccess);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading data: {ex.Message}", Severity.Error);
+        }
+        finally { _isLoading = false; }
+    }
+
+    private int GetMetricValue(string key) => _domainDetail?.Metrics.TryGetValue(key, out var v) == true && v is int i ? i : 0;
+    private void ShowFindingDetails(FindingDto finding) { _selectedFinding = finding; _showFindingDialog = true; }
+    private string GetScoreColor(int score) => score >= 90 ? "#4CAF50" : score >= 70 ? "#FFC107" : "#f44336";
+    private Color GetScoreProgressColor(int score) => score >= 90 ? Color.Success : score >= 70 ? Color.Warning : Color.Error;
+    private Color GetSeverityColor(DomainSeverity severity) => severity switch
+    {
+        DomainSeverity.Critical => Color.Error, DomainSeverity.High => Color.Warning,
+        DomainSeverity.Medium => Color.Info, _ => Color.Default
+    };
+    private string FormatMetricName(string name) => System.Text.RegularExpressions.Regex.Replace(name, "(\\B[A-Z])", " $1");
+    private bool IsHighOrCritical(FindingDto finding) => finding.Severity == DomainSeverity.Critical || finding.Severity == DomainSeverity.High;
+    private string FormatJson(string json)
+    {
+        try
+        {
+            var obj = System.Text.Json.JsonSerializer.Deserialize<object>(json);
+            return System.Text.Json.JsonSerializer.Serialize(obj, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+        }
+        catch { return json; }
+    }
+    private void OnRowClick(TableRowClickEventArgs<FindingDto> args)
+    {
+        if (args.Item != null && IsHighOrCritical(args.Item))
+            ShowFindingDetails(args.Item);
+    }
+
+    private async Task ExportPdf()
+    {
+        if (!RunId.HasValue) return;
+        try
+        {
+            var pdfBytes = await ReportService.GenerateDomainPdfReportAsync(RunId.Value, AssessmentDomain.PrivilegedAccess);
+            var fileName = $"PrivilegedAccess_Report_{DateTime.Now:yyyyMMdd_HHmmss}.pdf";
+            await DownloadFileAsync(pdfBytes, fileName, "application/pdf");
+            Snackbar.Add("PDF report downloaded successfully", Severity.Success);
+        }
+        catch (Exception ex) { Snackbar.Add($"Error generating PDF: {ex.Message}", Severity.Error); }
+    }
+
+    private async Task ExportExcel()
+    {
+        if (!RunId.HasValue) return;
+        try
+        {
+            var excelBytes = await ReportService.GenerateDomainExcelReportAsync(RunId.Value, AssessmentDomain.PrivilegedAccess);
+            var fileName = $"PrivilegedAccess_Report_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
+            await DownloadFileAsync(excelBytes, fileName, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+            Snackbar.Add("Excel report downloaded successfully", Severity.Success);
+        }
+        catch (Exception ex) { Snackbar.Add($"Error generating Excel: {ex.Message}", Severity.Error); }
+    }
+
+    private async Task DownloadFileAsync(byte[] bytes, string fileName, string contentType)
+    {
+        var base64 = Convert.ToBase64String(bytes);
+        await JSRuntime.InvokeVoidAsync("downloadFile", fileName, contentType, base64);
+    }
+}

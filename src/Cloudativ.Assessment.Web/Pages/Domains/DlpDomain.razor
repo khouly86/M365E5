@@ -3,10 +3,14 @@
 @attribute [Authorize]
 @inject ITenantService TenantService
 @inject IAssessmentService AssessmentService
+@inject IReportService ReportService
+@inject IJSRuntime JSRuntime
 @inject NavigationManager NavigationManager
 @inject ISnackbar Snackbar
 
 <PageTitle>Data Protection & Compliance - Cloudativ Assessment</PageTitle>
+
+<DomainAuthorizationGuard Domain="AssessmentDomain.DataProtectionCompliance" DomainDisplayName="Data Protection & Compliance">
 
 <div class="d-flex justify-space-between align-center mb-4">
     <div>
@@ -15,14 +19,7 @@
             DLP policies, sensitivity labels, retention policies, and compliance posture
         </MudText>
     </div>
-    <div>
-        @if (RunId.HasValue)
-        {
-            <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Download"
-                       OnClick="ExportReport" Class="mr-2">
-                Export Report
-            </MudButton>
-        }
+    <div class="d-flex gap-2">
         <MudSelect T="Guid?" Label="Select Tenant" @bind-Value="_selectedTenantId" Variant="Variant.Outlined"
                    Dense="true" Style="min-width: 200px;">
             @foreach (var tenant in _tenants)
@@ -30,6 +27,14 @@
                 <MudSelectItem Value="@((Guid?)tenant.Id)">@tenant.Name</MudSelectItem>
             }
         </MudSelect>
+        @if (_domainDetail != null && RunId.HasValue)
+        {
+            <MudMenu Label="Export Report" StartIcon="@Icons.Material.Filled.Download" EndIcon="@Icons.Material.Filled.KeyboardArrowDown"
+                     Color="Color.Primary" Variant="Variant.Filled" AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
+                <MudMenuItem OnClick="@ExportPdf" Icon="@Icons.Material.Filled.PictureAsPdf">Export as PDF</MudMenuItem>
+                <MudMenuItem OnClick="@ExportExcel" Icon="@Icons.Material.Filled.TableChart">Export as Excel</MudMenuItem>
+            </MudMenu>
+        }
     </div>
 </div>
 
@@ -200,7 +205,7 @@ else
         </div>
 
         <MudTable Items="@FilteredFindings" Hover="true" Dense="true" Striped="true" Breakpoint="Breakpoint.Sm"
-                  RowsPerPage="10">
+                  RowsPerPage="10" OnRowClick="@OnRowClick" T="FindingDto" RowClassFunc="@((item, _) => IsHighOrCritical(item) ? "clickable-row" : "")">
             <HeaderContent>
                 <MudTh>Severity</MudTh>
                 <MudTh>Status</MudTh>
@@ -212,6 +217,10 @@ else
                 <MudTd>
                     <MudChip Size="Size.Small" Color="@GetSeverityColor(context.Severity)" Variant="Variant.Filled">
                         @context.Severity
+                        @if (IsHighOrCritical(context))
+                        {
+                            <MudIcon Icon="@Icons.Material.Filled.TouchApp" Size="Size.Small" Class="ml-1" />
+                        }
                     </MudChip>
                 </MudTd>
                 <MudTd>
@@ -225,7 +234,9 @@ else
                     }
                 </MudTd>
                 <MudTd>
-                    <MudText Typo="Typo.body2" Style="font-weight: 500;">@context.Title</MudText>
+                    <MudText Typo="Typo.body2" Style="@(IsHighOrCritical(context) ? "font-weight: 600; cursor: pointer;" : "font-weight: 500;")">
+                        @context.Title
+                    </MudText>
                     <MudText Typo="Typo.caption" Color="Color.Secondary" Style="max-width: 400px;">
                         @context.Description
                     </MudText>
@@ -292,6 +303,8 @@ else
         <MudButton OnClick="@(() => _showFindingDialog = false)">Close</MudButton>
     </DialogActions>
 </MudDialog>
+
+</DomainAuthorizationGuard>
 
 @code {
     [Parameter]
@@ -380,19 +393,43 @@ else
         _showFindingDialog = true;
     }
 
-    private async Task ExportReport()
+    private bool IsHighOrCritical(FindingDto finding) => finding.Severity == DomainSeverity.Critical || finding.Severity == DomainSeverity.High;
+    private void OnRowClick(TableRowClickEventArgs<FindingDto> args)
+    {
+        if (args.Item != null && IsHighOrCritical(args.Item))
+            ShowFindingDetails(args.Item);
+    }
+
+    private async Task ExportPdf()
     {
         if (!RunId.HasValue) return;
-
         try
         {
-            await AssessmentService.ExportDomainReportAsync(RunId.Value, AssessmentDomain.DataProtectionCompliance, ReportFormat.Pdf);
-            Snackbar.Add("Report exported successfully", Severity.Success);
+            var pdfBytes = await ReportService.GenerateDomainPdfReportAsync(RunId.Value, AssessmentDomain.DataProtectionCompliance);
+            var fileName = $"DataProtection_Report_{DateTime.Now:yyyyMMdd_HHmmss}.pdf";
+            await DownloadFileAsync(pdfBytes, fileName, "application/pdf");
+            Snackbar.Add("PDF report downloaded successfully", Severity.Success);
         }
-        catch (Exception ex)
+        catch (Exception ex) { Snackbar.Add($"Error generating PDF: {ex.Message}", Severity.Error); }
+    }
+
+    private async Task ExportExcel()
+    {
+        if (!RunId.HasValue) return;
+        try
         {
-            Snackbar.Add($"Error exporting report: {ex.Message}", Severity.Error);
+            var excelBytes = await ReportService.GenerateDomainExcelReportAsync(RunId.Value, AssessmentDomain.DataProtectionCompliance);
+            var fileName = $"DataProtection_Report_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
+            await DownloadFileAsync(excelBytes, fileName, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+            Snackbar.Add("Excel report downloaded successfully", Severity.Success);
         }
+        catch (Exception ex) { Snackbar.Add($"Error generating Excel: {ex.Message}", Severity.Error); }
+    }
+
+    private async Task DownloadFileAsync(byte[] bytes, string fileName, string contentType)
+    {
+        var base64 = Convert.ToBase64String(bytes);
+        await JSRuntime.InvokeVoidAsync("downloadFile", fileName, contentType, base64);
     }
 
     private string GetScoreColor(int score) => score switch

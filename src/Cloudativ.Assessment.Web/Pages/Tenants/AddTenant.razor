@@ -1,8 +1,14 @@
 @page "/tenants/new"
 @attribute [Authorize]
 @inject ITenantService TenantService
+@inject IGovernanceService GovernanceService
+@inject AssessmentHubService AssessmentHubService
+@inject AuthenticationStateService AuthService
 @inject NavigationManager NavigationManager
 @inject ISnackbar Snackbar
+@using AssessmentDomainEnum = Cloudativ.Assessment.Domain.Enums.AssessmentDomain
+@using Cloudativ.Assessment.Web.Services
+@using static Cloudativ.Assessment.Domain.Enums.ComplianceStandardExtensions
 
 <PageTitle>Add Tenant - Cloudativ Assessment</PageTitle>
 
@@ -11,11 +17,15 @@
     <MudText Typo="Typo.h5" Style="font-weight: 600; color: #51627A;">Add New Tenant</MudText>
 </div>
 
-<MudPaper Class="pa-6" Elevation="2" Style="border-radius: 12px; max-width: 800px;">
+<MudPaper Class="pa-6" Elevation="2" Style="border-radius: 12px; max-width: 900px;">
     <EditForm Model="@_model" OnValidSubmit="HandleSubmit">
         <DataAnnotationsValidator />
 
-        <MudText Typo="Typo.h6" Class="mb-4" Style="color: #51627A;">Tenant Information</MudText>
+        @* Step 1: Basic Tenant Information *@
+        <div class="d-flex align-center mb-4">
+            <MudAvatar Color="Color.Primary" Size="Size.Small" Class="mr-2">1</MudAvatar>
+            <MudText Typo="Typo.h6" Style="color: #51627A;">Tenant Information</MudText>
+        </div>
 
         <MudGrid>
             <MudItem xs="12" md="6">
@@ -35,14 +45,9 @@
                               Placeholder="e.g., contoso.com" />
             </MudItem>
             <MudItem xs="12" md="6">
-                <MudTextField @bind-Value="_azureTenantIdString"
-                              Label="Azure Tenant ID"
-                              Variant="Variant.Outlined"
-                              HelperText="Optional - GUID of the Azure AD tenant"
-                              Placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" />
-            </MudItem>
-            <MudItem xs="12" md="6">
-                <MudSelect @bind-Value="_model.Industry"
+                <MudSelect T="string"
+                           Value="_model.Industry"
+                           ValueChanged="OnIndustryChanged"
                            Label="Industry"
                            Variant="Variant.Outlined"
                            Clearable="true">
@@ -56,7 +61,7 @@
                     <MudSelectItem Value="@("Other")">Other</MudSelectItem>
                 </MudSelect>
             </MudItem>
-            <MudItem xs="12">
+            <MudItem xs="12" md="6">
                 <MudTextField @bind-Value="_model.ContactEmail"
                               Label="Contact Email"
                               InputType="InputType.Email"
@@ -67,36 +72,332 @@
 
         <MudDivider Class="my-6" />
 
+        @* Step 2: Azure AD Connection Settings *@
         <div class="d-flex align-center mb-4">
-            <MudText Typo="Typo.h6" Style="color: #51627A;">Azure AD App Registration</MudText>
-            <MudChip Size="Size.Small" Color="Color.Info" Class="ml-2">Optional</MudChip>
+            <MudAvatar Color="Color.Primary" Size="Size.Small" Class="mr-2">2</MudAvatar>
+            <MudText Typo="Typo.h6" Style="color: #51627A;">Azure AD Connection</MudText>
+            <MudChip Size="Size.Small" Color="Color.Warning" Class="ml-2">Required</MudChip>
         </div>
 
-        <MudAlert Severity="Severity.Info" Class="mb-4" Dense="true">
-            Provide Azure AD App credentials to enable automatic Microsoft 365 security assessments.
-            You can configure this later from the tenant settings.
-        </MudAlert>
+        @* Authentication Type Selection - Card Based UI *@
+        <MudText Typo="Typo.subtitle2" Class="mb-3" Style="color: var(--mud-palette-text-secondary);">Select Authentication Method</MudText>
 
-        <MudGrid>
+        <MudGrid Class="mb-4">
+            @* App Registration Card *@
             <MudItem xs="12" md="6">
-                <MudTextField @bind-Value="_model.ClientId"
-                              Label="Application (Client) ID"
-                              Variant="Variant.Outlined"
-                              Placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" />
+                <MudCard Elevation="@(_model.AuthenticationType == AuthType.AppRegistration ? 4 : 1)"
+                         Class="@($"login-option-card {(_model.AuthenticationType == AuthType.AppRegistration ? "selected" : "")}")"
+                         Style="@($"cursor: pointer; border: 2px solid {(_model.AuthenticationType == AuthType.AppRegistration ? "var(--mud-palette-primary)" : "transparent")}; transition: all 0.2s ease;")"
+                         @onclick="@(() => _model.AuthenticationType = AuthType.AppRegistration)">
+                    <MudCardContent Class="d-flex flex-column align-center pa-4">
+                        <MudAvatar Color="@(_model.AuthenticationType == AuthType.AppRegistration ? Color.Primary : Color.Default)"
+                                   Size="Size.Large" Class="mb-3">
+                            <MudIcon Icon="@Icons.Material.Filled.Key" />
+                        </MudAvatar>
+                        <MudText Typo="Typo.h6" Align="Align.Center" Style="font-weight: 600;">App Registration</MudText>
+                        <MudText Typo="Typo.body2" Align="Align.Center" Style="color: var(--mud-palette-text-secondary);" Class="mt-1">
+                            Client Credentials Flow
+                        </MudText>
+                        <MudText Typo="Typo.caption" Align="Align.Center" Style="color: var(--mud-palette-text-secondary);" Class="mt-2">
+                            Use App ID, Secret ID & Secret Value for automated, unattended access
+                        </MudText>
+                        @if (_model.AuthenticationType == AuthType.AppRegistration)
+                        {
+                            <MudChip Color="Color.Primary" Size="Size.Small" Class="mt-3">Selected</MudChip>
+                        }
+                    </MudCardContent>
+                </MudCard>
             </MudItem>
+
+            @* Portal Admin Card *@
             <MudItem xs="12" md="6">
-                <MudTextField @bind-Value="_model.ClientSecret"
-                              Label="Client Secret"
-                              InputType="@(_showSecret ? InputType.Text : InputType.Password)"
-                              Variant="Variant.Outlined"
-                              Adornment="Adornment.End"
-                              AdornmentIcon="@(_showSecret ? Icons.Material.Filled.Visibility : Icons.Material.Filled.VisibilityOff)"
-                              OnAdornmentClick="@(() => _showSecret = !_showSecret)" />
+                <MudCard Elevation="@(_model.AuthenticationType == AuthType.PortalAdmin ? 4 : 1)"
+                         Class="@($"login-option-card {(_model.AuthenticationType == AuthType.PortalAdmin ? "selected" : "")}")"
+                         Style="@($"cursor: pointer; border: 2px solid {(_model.AuthenticationType == AuthType.PortalAdmin ? "var(--mud-palette-primary)" : "transparent")}; transition: all 0.2s ease;")"
+                         @onclick="@(() => _model.AuthenticationType = AuthType.PortalAdmin)">
+                    <MudCardContent Class="d-flex flex-column align-center pa-4">
+                        <MudAvatar Color="@(_model.AuthenticationType == AuthType.PortalAdmin ? Color.Primary : Color.Default)"
+                                   Size="Size.Large" Class="mb-3">
+                            <MudIcon Icon="@Icons.Material.Filled.AdminPanelSettings" />
+                        </MudAvatar>
+                        <MudText Typo="Typo.h6" Align="Align.Center" Style="font-weight: 600;">Portal Admin</MudText>
+                        <MudText Typo="Typo.body2" Align="Align.Center" Style="color: var(--mud-palette-text-secondary);" Class="mt-1">
+                            Delegated Admin Login
+                        </MudText>
+                        <MudText Typo="Typo.caption" Align="Align.Center" Style="color: var(--mud-palette-text-secondary);" Class="mt-2">
+                            Sign in with a Global Administrator account interactively
+                        </MudText>
+                        @if (_model.AuthenticationType == AuthType.PortalAdmin)
+                        {
+                            <MudChip Color="Color.Primary" Size="Size.Small" Class="mt-3">Selected</MudChip>
+                        }
+                    </MudCardContent>
+                </MudCard>
             </MudItem>
         </MudGrid>
 
+        @* Connection Details Based on Selected Auth Type *@
+        @if (_model.AuthenticationType == AuthType.AppRegistration)
+        {
+            <MudAlert Severity="Severity.Info" Class="mb-4" Dense="true" Icon="@Icons.Material.Filled.Info">
+                <MudText Typo="Typo.body2">
+                    Register an application in Azure AD with required permissions.
+                    <MudLink Href="https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade" Target="_blank" Class="ml-1">
+                        Open Azure Portal
+                    </MudLink>
+                </MudText>
+            </MudAlert>
+
+            <MudGrid>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_model.AzureTenantId"
+                                  Label="Azure Tenant ID"
+                                  Required="true"
+                                  RequiredError="Azure Tenant ID is required"
+                                  Variant="Variant.Outlined"
+                                  HelperText="Found in Azure Portal > Azure Active Directory > Overview > Tenant ID"
+                                  Placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                                  Adornment="Adornment.Start"
+                                  AdornmentIcon="@Icons.Material.Filled.Business" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_model.ClientId"
+                                  Label="Application (Client) ID"
+                                  Required="true"
+                                  RequiredError="Application ID is required"
+                                  Variant="Variant.Outlined"
+                                  HelperText="Found in Azure Portal > App registrations > Your app > Overview"
+                                  Placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                                  Adornment="Adornment.Start"
+                                  AdornmentIcon="@Icons.Material.Filled.Apps" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_model.SecretId"
+                                  Label="Secret ID"
+                                  Required="true"
+                                  RequiredError="Secret ID is required"
+                                  Variant="Variant.Outlined"
+                                  HelperText="Found in Azure Portal > App registrations > Certificates & secrets > Secret ID column"
+                                  Placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                                  Adornment="Adornment.Start"
+                                  AdornmentIcon="@Icons.Material.Filled.Fingerprint" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_model.SecretValue"
+                                  Label="Secret Value"
+                                  Required="true"
+                                  RequiredError="Secret Value is required"
+                                  InputType="@(_showSecret ? InputType.Text : InputType.Password)"
+                                  Variant="Variant.Outlined"
+                                  HelperText="The secret value shown only once when creating the secret (copy it immediately)"
+                                  Adornment="Adornment.End"
+                                  AdornmentIcon="@(_showSecret ? Icons.Material.Filled.Visibility : Icons.Material.Filled.VisibilityOff)"
+                                  OnAdornmentClick="@(() => _showSecret = !_showSecret)" />
+                </MudItem>
+            </MudGrid>
+
+            @* Test Connection Button *@
+            <div class="d-flex justify-center my-4">
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           StartIcon="@Icons.Material.Filled.Cable"
+                           OnClick="TestConnection"
+                           Disabled="@_isTesting"
+                           Size="Size.Large"
+                           Style="min-width: 200px;">
+                    @if (_isTesting)
+                    {
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                        <span>Testing Connection...</span>
+                    }
+                    else
+                    {
+                        <span>Test Connection</span>
+                    }
+                </MudButton>
+            </div>
+        }
+        else
+        {
+            <MudAlert Severity="Severity.Info" Class="mb-4" Dense="true" Icon="@Icons.Material.Filled.Info">
+                <MudText Typo="Typo.body2">
+                    You will be redirected to Microsoft to sign in. Ensure you have Global Administrator privileges.
+                </MudText>
+            </MudAlert>
+
+            <MudGrid>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_model.AzureTenantId"
+                                  Label="Azure Tenant ID"
+                                  Required="true"
+                                  RequiredError="Azure Tenant ID is required"
+                                  Variant="Variant.Outlined"
+                                  HelperText="Found in Azure Portal > Azure Active Directory > Overview > Tenant ID"
+                                  Placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                                  Adornment="Adornment.Start"
+                                  AdornmentIcon="@Icons.Material.Filled.Business" />
+                </MudItem>
+            </MudGrid>
+
+            @* Login with Admin Button *@
+            <div class="d-flex justify-center my-4">
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           StartIcon="@Icons.Material.Filled.Login"
+                           OnClick="LoginWithPortalAdmin"
+                           Disabled="@_isTesting"
+                           Size="Size.Large"
+                           Style="min-width: 200px;">
+                    @if (_isTesting)
+                    {
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                        <span>Signing in...</span>
+                    }
+                    else
+                    {
+                        <span>Sign in with Microsoft</span>
+                    }
+                </MudButton>
+            </div>
+        }
+
+        @* Connection Test Results *@
+        @if (_testResult != null)
+        {
+            <MudDivider Class="my-4" />
+
+            @if (_testResult.Success)
+            {
+                <MudAlert Severity="Severity.Success" Class="mb-4" Icon="@Icons.Material.Filled.CheckCircle">
+                    <MudText Typo="Typo.subtitle1" Style="font-weight: 600;">Connection Successful!</MudText>
+                    @if (!string.IsNullOrEmpty(_testResult.OrganizationName))
+                    {
+                        <MudText Typo="Typo.body2">Connected to: <strong>@_testResult.OrganizationName</strong></MudText>
+                    }
+                </MudAlert>
+
+                @* Permissions Summary *@
+                <MudExpansionPanels Class="mb-4">
+                    <MudExpansionPanel>
+                        <TitleContent>
+                            <div class="d-flex align-center">
+                                @if (_testResult.MissingPermissions.Any())
+                                {
+                                    <MudIcon Icon="@Icons.Material.Filled.Warning" Color="Color.Warning" Class="mr-2" />
+                                    <MudText>Permissions: @_testResult.GrantedPermissions.Count granted, <span style="color: var(--mud-palette-warning);">@_testResult.MissingPermissions.Count missing</span></MudText>
+                                }
+                                else
+                                {
+                                    <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" Class="mr-2" />
+                                    <MudText>All @_testResult.GrantedPermissions.Count required permissions granted</MudText>
+                                }
+                            </div>
+                        </TitleContent>
+                        <ChildContent>
+                            @if (_testResult.MissingPermissions.Any())
+                            {
+                                <MudAlert Severity="Severity.Warning" Dense="true" Class="mb-3">
+                                    Missing permissions may limit some assessment features. Grant these permissions in Azure Portal > App registrations > API permissions.
+                                </MudAlert>
+                                <MudText Typo="Typo.subtitle2" Class="mb-2" Style="color: var(--mud-palette-warning);">Missing Permissions:</MudText>
+                                <div class="d-flex flex-wrap gap-1 mb-3">
+                                    @foreach (var permission in _testResult.MissingPermissions)
+                                    {
+                                        <MudChip Size="Size.Small" Color="Color.Warning" Variant="Variant.Outlined">@permission</MudChip>
+                                    }
+                                </div>
+                            }
+                            <MudText Typo="Typo.subtitle2" Class="mb-2" Style="color: var(--mud-palette-success);">Granted Permissions:</MudText>
+                            <div class="d-flex flex-wrap gap-1">
+                                @foreach (var permission in _testResult.GrantedPermissions)
+                                {
+                                    <MudChip Size="Size.Small" Color="Color.Success" Variant="Variant.Outlined">@permission</MudChip>
+                                }
+                            </div>
+                        </ChildContent>
+                    </MudExpansionPanel>
+                </MudExpansionPanels>
+            }
+            else
+            {
+                <MudAlert Severity="Severity.Error" Class="mb-4" Icon="@Icons.Material.Filled.Error">
+                    <MudText Typo="Typo.subtitle1" Style="font-weight: 600;">Connection Failed</MudText>
+                    <MudText Typo="Typo.body2" Style="white-space: pre-line;">@_testResult.ErrorMessage</MudText>
+                    @if (!string.IsNullOrEmpty(_testResult.ErrorCode))
+                    {
+                        <MudText Typo="Typo.caption" Class="mt-2" Style="color: var(--mud-palette-text-secondary);">Error Code: @_testResult.ErrorCode</MudText>
+                    }
+                </MudAlert>
+
+                @* Show required permissions for reference *@
+                <MudExpansionPanels Class="mb-4">
+                    <MudExpansionPanel Text="Required Permissions (for reference)">
+                        <MudText Typo="Typo.body2" Class="mb-2">
+                            Ensure your app registration has the following <strong>Application permissions</strong> (not Delegated):
+                        </MudText>
+                        <div class="d-flex flex-wrap gap-1">
+                            @foreach (var permission in _testResult.RequiredPermissions)
+                            {
+                                <MudChip Size="Size.Small" Color="Color.Default" Variant="Variant.Outlined">@permission</MudChip>
+                            }
+                        </div>
+                    </MudExpansionPanel>
+                </MudExpansionPanels>
+            }
+        }
+
         <MudDivider Class="my-6" />
 
+        @* Step 3: Compliance Standards Selection *@
+        <div class="d-flex align-center mb-4">
+            <MudAvatar Color="Color.Primary" Size="Size.Small" Class="mr-2">3</MudAvatar>
+            <MudText Typo="Typo.h6" Style="color: #51627A;">Compliance Standards</MudText>
+            <MudChip Size="Size.Small" Color="Color.Info" Class="ml-2">Optional</MudChip>
+        </div>
+
+        <MudAlert Severity="Severity.Info" Class="mb-4" Dense="true" Icon="@Icons.Material.Filled.Info">
+            <MudText Typo="Typo.body2">
+                Select the compliance standards to assess against. Standards are automatically recommended based on your industry.
+                @if (!_openAiEnabled)
+                {
+                    <strong> Note: Governance analysis requires OpenAI to be configured.</strong>
+                }
+            </MudText>
+        </MudAlert>
+
+        <div class="d-flex flex-wrap gap-2 mb-4">
+            @foreach (var standard in _availableStandards)
+            {
+                var isSelected = _model.SelectedStandards.Contains(standard.Standard);
+                <MudChip Color="@(isSelected ? Color.Primary : (standard.IsRecommended ? Color.Secondary : Color.Default))"
+                         Variant="@(isSelected ? Variant.Filled : Variant.Outlined)"
+                         OnClick="@(() => ToggleStandard(standard.Standard))"
+                         Style="cursor: pointer;"
+                         Disabled="@(!standard.IsEnabled)"
+                         Title="@(standard.IsEnabled ? standard.Description : "Document not configured")">
+                    @if (standard.IsRecommended)
+                    {
+                        <MudIcon Icon="@Icons.Material.Filled.Star" Size="Size.Small" Class="mr-1" />
+                    }
+                    @standard.DisplayName
+                    @if (!standard.IsEnabled)
+                    {
+                        <MudIcon Icon="@Icons.Material.Filled.Lock" Size="Size.Small" Class="ml-1" />
+                    }
+                </MudChip>
+            }
+        </div>
+
+        @if (_model.SelectedStandards.Any())
+        {
+            <MudText Typo="Typo.body2" Class="mb-2" Style="color: var(--mud-palette-text-secondary);">
+                Selected: @string.Join(", ", _model.SelectedStandards.Select(s => s.GetDisplayName()))
+            </MudText>
+        }
+
+        <MudDivider Class="my-6" />
+
+        @* Action Buttons *@
         <div class="d-flex justify-end gap-3">
             <MudButton Variant="Variant.Text"
                        Color="Color.Default"
@@ -106,27 +407,114 @@
             <MudButton Variant="Variant.Filled"
                        Color="Color.Primary"
                        ButtonType="ButtonType.Submit"
-                       Disabled="@_isSubmitting"
-                       StartIcon="@(_isSubmitting ? null : Icons.Material.Filled.Save)">
+                       Disabled="@(!CanSubmit)"
+                       StartIcon="@(_isSubmitting ? null : Icons.Material.Filled.PlayArrow)"
+                       Size="Size.Large">
                 @if (_isSubmitting)
                 {
                     <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
-                    <span>Creating...</span>
+                    <span>Creating & Starting Assessment...</span>
                 }
                 else
                 {
-                    <span>Create Tenant</span>
+                    <span>Create Tenant & Start Assessment</span>
                 }
             </MudButton>
         </div>
+
+        @if (!CanSubmit && _testResult == null)
+        {
+            <MudText Typo="Typo.caption" Align="Align.Right" Class="mt-2" Style="color: var(--mud-palette-text-secondary);">
+                Please test the connection before creating the tenant
+            </MudText>
+        }
+        else if (!CanSubmit && _testResult != null && !_testResult.Success)
+        {
+            <MudText Typo="Typo.caption" Align="Align.Right" Class="mt-2" Style="color: var(--mud-palette-error);">
+                Fix the connection issues above to create the tenant
+            </MudText>
+        }
     </EditForm>
 </MudPaper>
 
 @code {
     private TenantCreateModel _model = new();
-    private string _azureTenantIdString = string.Empty;
     private bool _isSubmitting = false;
+    private bool _isTesting = false;
     private bool _showSecret = false;
+    private ConnectionTestResult? _testResult = null;
+    private List<ComplianceStandardInfoDto> _availableStandards = new();
+    private bool _openAiEnabled = false;
+    private string? _previousIndustry = null;
+
+    private bool CanSubmit => _testResult?.Success == true && !_isSubmitting && !_isTesting;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadComplianceStandards();
+    }
+
+    private async Task LoadComplianceStandards()
+    {
+        try
+        {
+            _openAiEnabled = await GovernanceService.IsOpenAiEnabledAsync();
+            _availableStandards = (await GovernanceService.GetAvailableStandardsAsync()).ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading compliance standards: {ex.Message}", Severity.Warning);
+        }
+    }
+
+    private void OnIndustryChanged(string? industry)
+    {
+        _model.Industry = industry;
+        _ = UpdateRecommendedStandards();
+    }
+
+    private async Task UpdateRecommendedStandards()
+    {
+        if (_model.Industry != _previousIndustry)
+        {
+            _previousIndustry = _model.Industry;
+            try
+            {
+                var recommended = await GovernanceService.GetRecommendedStandardsForIndustryAsync(_model.Industry);
+                _availableStandards = recommended.ToList();
+
+                // Auto-select recommended standards
+                _model.SelectedStandards.Clear();
+                foreach (var std in recommended.Where(s => s.IsRecommended && s.IsEnabled))
+                {
+                    _model.SelectedStandards.Add(std.Standard);
+                }
+                StateHasChanged();
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Error loading recommended standards: {ex.Message}", MudBlazor.Severity.Warning);
+            }
+        }
+    }
+
+    private void ToggleStandard(ComplianceStandard standard)
+    {
+        if (_model.SelectedStandards.Contains(standard))
+        {
+            _model.SelectedStandards.Remove(standard);
+        }
+        else
+        {
+            _model.SelectedStandards.Add(standard);
+        }
+    }
+
+    private enum AuthType
+    {
+        AppRegistration,
+        PortalAdmin
+    }
 
     private class TenantCreateModel
     {
@@ -143,50 +531,162 @@
         [EmailAddress(ErrorMessage = "Invalid email address")]
         public string? ContactEmail { get; set; }
 
-        public string? ClientId { get; set; }
-        public string? ClientSecret { get; set; }
+        public AuthType AuthenticationType { get; set; } = AuthType.AppRegistration;
+
+        [Required(ErrorMessage = "Azure Tenant ID is required")]
+        public string AzureTenantId { get; set; } = string.Empty;
+
+        public string ClientId { get; set; } = string.Empty;
+
+        public string SecretId { get; set; } = string.Empty;
+
+        public string SecretValue { get; set; } = string.Empty;
+
+        public HashSet<ComplianceStandard> SelectedStandards { get; set; } = new();
+    }
+
+    private async Task TestConnection()
+    {
+        _isTesting = true;
+        _testResult = null;
+        StateHasChanged();
+
+        try
+        {
+            _testResult = await TenantService.TestConnectionAsync(
+                _model.AzureTenantId,
+                _model.ClientId,
+                _model.SecretValue);
+
+            if (_testResult.Success)
+            {
+                if (_testResult.MissingPermissions.Any())
+                {
+                    Snackbar.Add($"Connection successful! Note: {_testResult.MissingPermissions.Count} permission(s) missing.", Severity.Warning);
+                }
+                else
+                {
+                    Snackbar.Add("Connection successful! All permissions granted.", Severity.Success);
+                }
+            }
+            else
+            {
+                Snackbar.Add("Connection failed. See details below.", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            _testResult = new ConnectionTestResult
+            {
+                Success = false,
+                ErrorCode = "EXCEPTION",
+                ErrorMessage = $"An unexpected error occurred: {ex.Message}"
+            };
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isTesting = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task LoginWithPortalAdmin()
+    {
+        if (string.IsNullOrWhiteSpace(_model.AzureTenantId))
+        {
+            Snackbar.Add("Please enter the Azure Tenant ID first.", Severity.Warning);
+            return;
+        }
+
+        _isTesting = true;
+        _testResult = null;
+        StateHasChanged();
+
+        try
+        {
+            _testResult = await TenantService.TestConnectionWithDelegatedAuthAsync(_model.AzureTenantId);
+
+            if (_testResult.Success)
+            {
+                Snackbar.Add($"Successfully authenticated to {_testResult.OrganizationName}!", Severity.Success);
+            }
+            else
+            {
+                Snackbar.Add("Authentication failed. See details below.", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            _testResult = new ConnectionTestResult
+            {
+                Success = false,
+                ErrorCode = "EXCEPTION",
+                ErrorMessage = $"An unexpected error occurred: {ex.Message}"
+            };
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isTesting = false;
+            StateHasChanged();
+        }
     }
 
     private async Task HandleSubmit()
     {
+        if (!CanSubmit)
+        {
+            Snackbar.Add("Please test the connection successfully before creating the tenant.", Severity.Warning);
+            return;
+        }
+
         _isSubmitting = true;
 
         try
         {
-            Guid? azureTenantId = null;
-            if (!string.IsNullOrWhiteSpace(_azureTenantIdString))
-            {
-                if (Guid.TryParse(_azureTenantIdString, out var parsedGuid))
-                {
-                    azureTenantId = parsedGuid;
-                }
-                else
-                {
-                    Snackbar.Add("Invalid Azure Tenant ID format. Please enter a valid GUID.", Severity.Error);
-                    _isSubmitting = false;
-                    return;
-                }
-            }
-
+            // Step 1: Create the tenant
             var dto = new TenantCreateDto
             {
-                Name = _model.Name,
+                Name = _model.Name.Trim(),
                 Domain = _model.Domain.ToLowerInvariant().Trim(),
-                AzureTenantId = azureTenantId,
+                AzureTenantId = Guid.Parse(_model.AzureTenantId.Trim()),
                 Industry = _model.Industry,
-                ContactEmail = _model.ContactEmail,
-                ClientId = _model.ClientId,
-                ClientSecret = _model.ClientSecret
+                ContactEmail = _model.ContactEmail?.Trim(),
+                AuthenticationType = _model.AuthenticationType == AuthType.AppRegistration ? "AppRegistration" : "PortalAdmin",
+                ClientId = _model.AuthenticationType == AuthType.AppRegistration ? _model.ClientId.Trim() : null,
+                SecretId = _model.AuthenticationType == AuthType.AppRegistration ? _model.SecretId.Trim() : null,
+                SecretValue = _model.AuthenticationType == AuthType.AppRegistration ? _model.SecretValue : null,
+                ComplianceStandards = _model.SelectedStandards.Select(s => s.ToString()).ToList()
             };
 
-            var result = await TenantService.CreateAsync(dto);
+            var tenant = await TenantService.CreateAsync(dto);
+            Snackbar.Add($"Tenant '{tenant.Name}' created successfully!", Severity.Success);
 
-            Snackbar.Add($"Tenant '{result.Name}' created successfully!", Severity.Success);
-            NavigationManager.NavigateTo($"/tenants/{result.Id}");
+            // Step 2: Start assessment with all domains (queued via Hangfire)
+            var currentUser = await AuthService.GetCurrentUserAsync();
+            var allDomains = Enum.GetValues<AssessmentDomainEnum>().ToList();
+
+            var assessmentRequest = new StartAssessmentRequest
+            {
+                TenantId = tenant.Id,
+                DomainsToAssess = allDomains,
+                InitiatedBy = currentUser?.DisplayName ?? "System"
+            };
+
+            var runId = await AssessmentHubService.StartAssessmentAsync(assessmentRequest);
+            Snackbar.Add("Assessment started and queued for processing!", Severity.Success);
+
+            // Navigate to tenant detail page to see assessment progress
+            NavigationManager.NavigateTo($"/tenants/{tenant.Id}");
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("already exists"))
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Error creating tenant: {ex.Message}", Severity.Error);
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
         }
         finally
         {

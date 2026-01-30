@@ -1,0 +1,166 @@
+@inject IAssessmentService AssessmentService
+@inject IDashboardService DashboardService
+
+<div class="report-preview">
+    <div class="d-flex align-center mb-4">
+        <MudIcon Icon="@Icons.Material.Filled.Assessment" Size="Size.Large" Style="color: #51627A;" Class="mr-3" />
+        <div>
+            <MudText Typo="Typo.h6">Full Assessment Report</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                Comprehensive security assessment with all findings and recommendations
+            </MudText>
+        </div>
+    </div>
+
+    <MudDivider Class="mb-4" />
+
+    @if (_isLoading)
+    {
+        <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+    }
+    else if (_assessment != null)
+    {
+        <MudText Typo="Typo.subtitle1" Class="mb-3">Assessment Overview</MudText>
+
+        <MudGrid Spacing="2">
+            <MudItem xs="6" md="3">
+                <MudPaper Class="pa-3" Elevation="1" Style="text-align: center;">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Overall Score</MudText>
+                    <MudText Typo="Typo.h4" Style="@($"font-weight: 700; color: {GetScoreColor(_assessment.OverallScore ?? 0)}")">
+                        @(_assessment.OverallScore ?? 0)%
+                    </MudText>
+                    <MudChip Size="Size.Small" Style="@($"background: {GetScoreColor(_assessment.OverallScore ?? 0)}; color: white;")">
+                        Grade @GetGrade(_assessment.OverallScore ?? 0)
+                    </MudChip>
+                </MudPaper>
+            </MudItem>
+
+            <MudItem xs="6" md="3">
+                <MudPaper Class="pa-3" Elevation="1" Style="text-align: center;">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Domains</MudText>
+                    <MudText Typo="Typo.h4" Style="font-weight: 700; color: #51627A;">
+                        @_assessment.DomainScores.Count
+                    </MudText>
+                    <MudText Typo="Typo.caption">assessed</MudText>
+                </MudPaper>
+            </MudItem>
+
+            <MudItem xs="6" md="3">
+                <MudPaper Class="pa-3" Elevation="1" Style="text-align: center;">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Total Findings</MudText>
+                    <MudText Typo="Typo.h4" Style="font-weight: 700; color: #51627A;">
+                        @_findingsSummary.TotalFindings
+                    </MudText>
+                    <MudText Typo="Typo.caption">identified</MudText>
+                </MudPaper>
+            </MudItem>
+
+            <MudItem xs="6" md="3">
+                <MudPaper Class="pa-3" Elevation="1" Style="text-align: center;">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Critical Issues</MudText>
+                    <MudText Typo="Typo.h4" Style="font-weight: 700; color: #DC2626;">
+                        @_findingsSummary.CriticalCount
+                    </MudText>
+                    <MudText Typo="Typo.caption">require attention</MudText>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+
+        <!-- Severity Breakdown -->
+        <MudGrid Class="mt-3" Spacing="1">
+            <MudItem xs="3">
+                <MudPaper Class="pa-2" Style="background: #DC2626; color: white; text-align: center;">
+                    <MudText Typo="Typo.h6">@_findingsSummary.CriticalCount</MudText>
+                    <MudText Typo="Typo.caption">Critical</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="3">
+                <MudPaper Class="pa-2" Style="background: #EA580C; color: white; text-align: center;">
+                    <MudText Typo="Typo.h6">@_findingsSummary.HighCount</MudText>
+                    <MudText Typo="Typo.caption">High</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="3">
+                <MudPaper Class="pa-2" Style="background: #CA8A04; color: white; text-align: center;">
+                    <MudText Typo="Typo.h6">@_findingsSummary.MediumCount</MudText>
+                    <MudText Typo="Typo.caption">Medium</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="3">
+                <MudPaper Class="pa-2" Style="background: #16A34A; color: white; text-align: center;">
+                    <MudText Typo="Typo.h6">@_findingsSummary.LowCount</MudText>
+                    <MudText Typo="Typo.caption">Low</MudText>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+
+        <MudText Typo="Typo.subtitle2" Class="mt-4 mb-2">Report Contents:</MudText>
+        <MudList T="string" Dense="true">
+            <MudListItem Icon="@Icons.Material.Filled.Check" IconColor="Color.Success">Executive summary with overall score</MudListItem>
+            <MudListItem Icon="@Icons.Material.Filled.Check" IconColor="Color.Success">M365 resources overview</MudListItem>
+            <MudListItem Icon="@Icons.Material.Filled.Check" IconColor="Color.Success">Domain-by-domain score breakdown</MudListItem>
+            <MudListItem Icon="@Icons.Material.Filled.Check" IconColor="Color.Success">All findings with severity classification</MudListItem>
+            <MudListItem Icon="@Icons.Material.Filled.Check" IconColor="Color.Success">Detailed descriptions and impact</MudListItem>
+            <MudListItem Icon="@Icons.Material.Filled.Check" IconColor="Color.Success">Remediation recommendations</MudListItem>
+            <MudListItem Icon="@Icons.Material.Filled.Check" IconColor="Color.Success">Affected resources per finding</MudListItem>
+        </MudList>
+    }
+    else
+    {
+        <MudAlert Severity="Severity.Info">
+            Select an assessment to see the report preview.
+        </MudAlert>
+    }
+</div>
+
+@code {
+    [Parameter] public Guid? AssessmentId { get; set; }
+
+    private AssessmentRunDto? _assessment;
+    private FindingsSummaryDto _findingsSummary = new();
+    private bool _isLoading = false;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await LoadAssessmentAsync();
+    }
+
+    private async Task LoadAssessmentAsync()
+    {
+        if (!AssessmentId.HasValue) return;
+
+        _isLoading = true;
+        try
+        {
+            _assessment = await AssessmentService.GetRunByIdAsync(AssessmentId.Value);
+            _findingsSummary = await DashboardService.GetFindingsSummaryAsync(AssessmentId.Value);
+        }
+        catch
+        {
+            _assessment = null;
+            _findingsSummary = new();
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private string GetScoreColor(int score) => score switch
+    {
+        >= 90 => "#16A34A",
+        >= 80 => "#22C55E",
+        >= 70 => "#CA8A04",
+        >= 60 => "#EA580C",
+        _ => "#DC2626"
+    };
+
+    private string GetGrade(int score) => score switch
+    {
+        >= 90 => "A",
+        >= 80 => "B",
+        >= 70 => "C",
+        >= 60 => "D",
+        _ => "F"
+    };
+}

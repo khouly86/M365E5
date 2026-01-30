@@ -18,6 +18,7 @@ builder.Host.UseSerilog();
 // Add services to the container
 builder.Services.AddRazorPages();
 builder.Services.AddServerSideBlazor();
+builder.Services.AddControllers();
 builder.Services.AddMudServices(config =>
 {
     config.PopoverOptions.ThrowOnDuplicateProvider = false;
@@ -82,6 +83,7 @@ app.UseHangfireDashboard("/hangfire", new DashboardOptions
     Authorization = new[] { new HangfireAuthorizationFilter() }
 });
 
+app.MapControllers();
 app.MapBlazorHub();
 app.MapFallbackToPage("/_Host");
 app.MapHealthChecks("/health");

@@ -1,0 +1,407 @@
+@page "/reports"
+@attribute [Authorize]
+@inject ITenantService TenantService
+@inject IAssessmentService AssessmentService
+@inject IDashboardService DashboardService
+@inject IReportService ReportService
+@inject IGovernanceExportService GovernanceExportService
+@inject IJSRuntime JS
+@inject ISnackbar Snackbar
+
+<PageTitle>Reports - Cloudativ Assessment</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4" Style="font-weight: 600; color: #51627A;">Reports Center</MudText>
+
+<MudGrid>
+    <!-- Left Panel: Report Configuration -->
+    <MudItem xs="12" md="4">
+        <MudPaper Class="pa-4" Elevation="2" Style="border-radius: 12px;">
+            <MudText Typo="Typo.h6" Class="mb-4">Report Configuration</MudText>
+
+            <!-- Report Type Selection -->
+            <MudSelect T="ReportType" Label="Report Type" @bind-Value="_selectedReportType"
+                       Variant="Variant.Outlined" Class="mb-4" AnchorOrigin="Origin.BottomCenter">
+                <MudSelectItem Value="ReportType.Resources">
+                    <div class="d-flex align-center">
+                        <MudIcon Icon="@Icons.Material.Filled.Storage" Class="mr-2" Size="Size.Small" />
+                        M365 Resources Report
+                    </div>
+                </MudSelectItem>
+                <MudSelectItem Value="ReportType.ImpactedResources">
+                    <div class="d-flex align-center">
+                        <MudIcon Icon="@Icons.Material.Filled.Warning" Class="mr-2" Size="Size.Small" />
+                        Impacted Resources Report
+                    </div>
+                </MudSelectItem>
+                <MudSelectItem Value="ReportType.DomainAssessment">
+                    <div class="d-flex align-center">
+                        <MudIcon Icon="@Icons.Material.Filled.Security" Class="mr-2" Size="Size.Small" />
+                        Domain Assessment Report
+                    </div>
+                </MudSelectItem>
+                <MudSelectItem Value="ReportType.ProgressComparison">
+                    <div class="d-flex align-center">
+                        <MudIcon Icon="@Icons.Material.Filled.TrendingUp" Class="mr-2" Size="Size.Small" />
+                        Progress Comparison Report
+                    </div>
+                </MudSelectItem>
+                <MudSelectItem Value="ReportType.Governance">
+                    <div class="d-flex align-center">
+                        <MudIcon Icon="@Icons.Material.Filled.Gavel" Class="mr-2" Size="Size.Small" />
+                        Governance Compliance Report
+                    </div>
+                </MudSelectItem>
+                <MudSelectItem Value="ReportType.FullAssessment">
+                    <div class="d-flex align-center">
+                        <MudIcon Icon="@Icons.Material.Filled.Assessment" Class="mr-2" Size="Size.Small" />
+                        Full Assessment Report
+                    </div>
+                </MudSelectItem>
+            </MudSelect>
+
+            <!-- Tenant Selection -->
+            <MudSelect T="Guid?" Label="Select Tenant" @bind-Value="_selectedTenantId"
+                       Variant="Variant.Outlined" Class="mb-4" AnchorOrigin="Origin.BottomCenter">
+                @if (_selectedReportType == ReportType.Resources)
+                {
+                    <MudSelectItem T="Guid?" Value="@((Guid?)null)">All Tenants (Aggregated)</MudSelectItem>
+                }
+                @foreach (var tenant in _tenants)
+                {
+                    <MudSelectItem Value="@((Guid?)tenant.Id)">@tenant.Name</MudSelectItem>
+                }
+            </MudSelect>
+
+            <!-- Assessment Selection (for certain report types) -->
+            @if (_selectedReportType != ReportType.Resources && _selectedReportType != ReportType.ProgressComparison)
+            {
+                <MudSelect T="Guid?" Label="Select Assessment" @bind-Value="_selectedAssessmentId"
+                           Variant="Variant.Outlined" Class="mb-4" AnchorOrigin="Origin.BottomCenter"
+                           Disabled="@(_selectedTenantId == null)">
+                    @foreach (var assessment in _assessments)
+                    {
+                        <MudSelectItem Value="@((Guid?)assessment.Id)">
+                            @assessment.StartedAt.ToString("MMM dd, yyyy HH:mm") - Score: @(assessment.OverallScore ?? 0)%
+                        </MudSelectItem>
+                    }
+                </MudSelect>
+            }
+
+            <!-- Domain Selection (for Domain Assessment report) -->
+            @if (_selectedReportType == ReportType.DomainAssessment)
+            {
+                <MudSelect T="AssessmentDomain?" Label="Select Domain" @bind-Value="_selectedDomain"
+                           Variant="Variant.Outlined" Class="mb-4" AnchorOrigin="Origin.BottomCenter">
+                    <MudSelectItem T="AssessmentDomain?" Value="@((AssessmentDomain?)null)">All Domains</MudSelectItem>
+                    @foreach (AssessmentDomain domain in Enum.GetValues(typeof(AssessmentDomain)))
+                    {
+                        <MudSelectItem Value="@((AssessmentDomain?)domain)">@domain.GetDisplayName()</MudSelectItem>
+                    }
+                </MudSelect>
+            }
+
+            <!-- Date Range (for Progress Comparison) -->
+            @if (_selectedReportType == ReportType.ProgressComparison)
+            {
+                <MudDateRangePicker Label="Date Range" @bind-DateRange="_dateRange"
+                                    Variant="Variant.Outlined" Class="mb-4" />
+            }
+
+            <!-- Governance Standards (for Governance report) -->
+            @if (_selectedReportType == ReportType.Governance)
+            {
+                <MudSelect T="Guid?" Label="Select Governance Run" @bind-Value="_selectedGovernanceRunId"
+                           Variant="Variant.Outlined" Class="mb-4" AnchorOrigin="Origin.BottomCenter"
+                           Disabled="@(_selectedTenantId == null)">
+                    @foreach (var run in _governanceRuns)
+                    {
+                        <MudSelectItem Value="@((Guid?)run.Id)">
+                            @run.StartedAt.ToString("MMM dd, yyyy HH:mm")
+                        </MudSelectItem>
+                    }
+                </MudSelect>
+            }
+
+            <!-- Export Format -->
+            <MudText Typo="Typo.subtitle2" Class="mb-2">Export Format</MudText>
+            <MudChipSet T="string" @bind-SelectedValue="_selectedFormat" SelectionMode="SelectionMode.SingleSelection" Class="mb-4">
+                <MudChip Value="@("pdf")" Color="Color.Primary" Variant="Variant.Outlined">
+                    <MudIcon Icon="@Icons.Material.Filled.PictureAsPdf" Size="Size.Small" Class="mr-1" /> PDF
+                </MudChip>
+                <MudChip Value="@("excel")" Color="Color.Success" Variant="Variant.Outlined">
+                    <MudIcon Icon="@Icons.Material.Filled.TableChart" Size="Size.Small" Class="mr-1" /> Excel
+                </MudChip>
+            </MudChipSet>
+
+            <!-- Generate Button -->
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true"
+                       StartIcon="@Icons.Material.Filled.Download" OnClick="GenerateReport"
+                       Disabled="@(!CanGenerateReport() || _isGenerating)">
+                @if (_isGenerating)
+                {
+                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                    <span>Generating...</span>
+                }
+                else
+                {
+                    <span>Generate Report</span>
+                }
+            </MudButton>
+        </MudPaper>
+    </MudItem>
+
+    <!-- Right Panel: Report Preview / Description -->
+    <MudItem xs="12" md="8">
+        <MudPaper Class="pa-4" Elevation="2" Style="border-radius: 12px; min-height: 500px;">
+            @switch (_selectedReportType)
+            {
+                case ReportType.Resources:
+                    <ResourcesReportPreview TenantId="_selectedTenantId" />
+                    break;
+                case ReportType.ImpactedResources:
+                    <ImpactedResourcesReportPreview AssessmentId="_selectedAssessmentId" />
+                    break;
+                case ReportType.DomainAssessment:
+                    <DomainAssessmentReportPreview AssessmentId="_selectedAssessmentId" Domain="_selectedDomain" />
+                    break;
+                case ReportType.ProgressComparison:
+                    <ProgressComparisonReportPreview TenantId="_selectedTenantId" DateRange="_dateRange" />
+                    break;
+                case ReportType.Governance:
+                    <GovernanceReportPreview TenantId="_selectedTenantId" RunId="_selectedGovernanceRunId" />
+                    break;
+                case ReportType.FullAssessment:
+                    <FullAssessmentReportPreview AssessmentId="_selectedAssessmentId" />
+                    break;
+            }
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
+@code {
+    private List<TenantDto> _tenants = new();
+    private List<AssessmentRunDto> _assessments = new();
+    private List<AssessmentRunDto> _governanceRuns = new();
+
+    private ReportType _selectedReportType = ReportType.FullAssessment;
+    private Guid? _selectedTenantId;
+    private Guid? _selectedAssessmentId;
+    private Guid? _selectedGovernanceRunId;
+    private AssessmentDomain? _selectedDomain;
+    private DateRange? _dateRange = new(DateTime.Now.AddMonths(-3), DateTime.Now);
+    private string _selectedFormat = "pdf";
+    private bool _isGenerating = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadTenantsAsync();
+    }
+
+    private async Task LoadTenantsAsync()
+    {
+        try
+        {
+            _tenants = (await TenantService.GetAllAsync()).ToList();
+            if (_tenants.Any())
+            {
+                _selectedTenantId = _tenants.First().Id;
+                await LoadAssessmentsAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading tenants: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task LoadAssessmentsAsync()
+    {
+        if (_selectedTenantId == null) return;
+
+        try
+        {
+            var runs = await AssessmentService.GetRunsByTenantAsync(_selectedTenantId.Value);
+            _assessments = runs.Where(r => r.Status == AssessmentStatus.Completed).ToList();
+            _governanceRuns = runs.Where(r => r.Status == AssessmentStatus.Completed).ToList();
+
+            if (_assessments.Any())
+            {
+                _selectedAssessmentId = _assessments.First().Id;
+            }
+            if (_governanceRuns.Any())
+            {
+                _selectedGovernanceRunId = _governanceRuns.First().Id;
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading assessments: {ex.Message}", Severity.Error);
+        }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_selectedTenantId.HasValue)
+        {
+            await LoadAssessmentsAsync();
+        }
+    }
+
+    private bool CanGenerateReport()
+    {
+        return _selectedReportType switch
+        {
+            ReportType.Resources => true,
+            ReportType.ImpactedResources => _selectedAssessmentId.HasValue,
+            ReportType.DomainAssessment => _selectedAssessmentId.HasValue,
+            ReportType.ProgressComparison => _selectedTenantId.HasValue && _dateRange != null,
+            ReportType.Governance => _selectedTenantId.HasValue && _selectedGovernanceRunId.HasValue,
+            ReportType.FullAssessment => _selectedAssessmentId.HasValue,
+            _ => false
+        };
+    }
+
+    private async Task GenerateReport()
+    {
+        if (!CanGenerateReport()) return;
+
+        _isGenerating = true;
+        StateHasChanged();
+
+        try
+        {
+            byte[]? reportData = null;
+            string fileName = "";
+            string contentType = _selectedFormat == "pdf" ? "application/pdf" : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+            string extension = _selectedFormat == "pdf" ? ".pdf" : ".xlsx";
+
+            switch (_selectedReportType)
+            {
+                case ReportType.Resources:
+                    var tenantName = _selectedTenantId.HasValue
+                        ? _tenants.FirstOrDefault(t => t.Id == _selectedTenantId)?.Name ?? "Tenant"
+                        : "AllTenants";
+                    fileName = $"M365_Resources_Report_{tenantName}_{DateTime.Now:yyyyMMdd}{extension}";
+
+                    if (_selectedAssessmentId.HasValue)
+                    {
+                        reportData = _selectedFormat == "pdf"
+                            ? await ReportService.GeneratePdfReportAsync(_selectedAssessmentId.Value)
+                            : await ReportService.GenerateExcelReportAsync(_selectedAssessmentId.Value);
+                    }
+                    else
+                    {
+                        Snackbar.Add("Please select an assessment for the resource report", Severity.Warning);
+                        return;
+                    }
+                    break;
+
+                case ReportType.ImpactedResources:
+                case ReportType.FullAssessment:
+                    if (!_selectedAssessmentId.HasValue)
+                    {
+                        Snackbar.Add("Please select an assessment", Severity.Warning);
+                        return;
+                    }
+                    fileName = $"Assessment_Report_{DateTime.Now:yyyyMMdd}{extension}";
+                    reportData = _selectedFormat == "pdf"
+                        ? await ReportService.GeneratePdfReportAsync(_selectedAssessmentId.Value)
+                        : await ReportService.GenerateExcelReportAsync(_selectedAssessmentId.Value);
+                    break;
+
+                case ReportType.DomainAssessment:
+                    if (!_selectedAssessmentId.HasValue)
+                    {
+                        Snackbar.Add("Please select an assessment", Severity.Warning);
+                        return;
+                    }
+                    if (_selectedDomain.HasValue)
+                    {
+                        fileName = $"{_selectedDomain.Value}_Report_{DateTime.Now:yyyyMMdd}{extension}";
+                        reportData = _selectedFormat == "pdf"
+                            ? await ReportService.GenerateDomainPdfReportAsync(_selectedAssessmentId.Value, _selectedDomain.Value)
+                            : await ReportService.GenerateDomainExcelReportAsync(_selectedAssessmentId.Value, _selectedDomain.Value);
+                    }
+                    else
+                    {
+                        fileName = $"AllDomains_Report_{DateTime.Now:yyyyMMdd}{extension}";
+                        reportData = _selectedFormat == "pdf"
+                            ? await ReportService.GeneratePdfReportAsync(_selectedAssessmentId.Value)
+                            : await ReportService.GenerateExcelReportAsync(_selectedAssessmentId.Value);
+                    }
+                    break;
+
+                case ReportType.ProgressComparison:
+                    if (!_selectedTenantId.HasValue)
+                    {
+                        Snackbar.Add("Please select a tenant", Severity.Warning);
+                        return;
+                    }
+                    // For progress comparison, we'll generate the full report with trend data
+                    var latestAssessment = _assessments.FirstOrDefault();
+                    if (latestAssessment != null)
+                    {
+                        fileName = $"Progress_Report_{DateTime.Now:yyyyMMdd}{extension}";
+                        reportData = _selectedFormat == "pdf"
+                            ? await ReportService.GeneratePdfReportAsync(latestAssessment.Id)
+                            : await ReportService.GenerateExcelReportAsync(latestAssessment.Id);
+                    }
+                    else
+                    {
+                        Snackbar.Add("No completed assessments found for this tenant", Severity.Warning);
+                        return;
+                    }
+                    break;
+
+                case ReportType.Governance:
+                    if (!_selectedTenantId.HasValue || !_selectedGovernanceRunId.HasValue)
+                    {
+                        Snackbar.Add("Please select a tenant and governance run", Severity.Warning);
+                        return;
+                    }
+                    fileName = $"Governance_Report_{DateTime.Now:yyyyMMdd}{extension}";
+                    reportData = _selectedFormat == "pdf"
+                        ? await GovernanceExportService.ExportToPdfAsync(_selectedGovernanceRunId.Value,
+                            _tenants.FirstOrDefault(t => t.Id == _selectedTenantId)?.Name ?? "Tenant")
+                        : await GovernanceExportService.ExportToExcelAsync(_selectedGovernanceRunId.Value,
+                            _tenants.FirstOrDefault(t => t.Id == _selectedTenantId)?.Name ?? "Tenant");
+                    break;
+            }
+
+            if (reportData != null && reportData.Length > 0)
+            {
+                await DownloadFileAsync(reportData, fileName, contentType);
+                Snackbar.Add("Report generated successfully!", Severity.Success);
+            }
+            else
+            {
+                Snackbar.Add("Failed to generate report", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error generating report: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isGenerating = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task DownloadFileAsync(byte[] data, string fileName, string contentType)
+    {
+        var base64 = Convert.ToBase64String(data);
+        await JS.InvokeVoidAsync("downloadFile", fileName, contentType, base64);
+    }
+
+    public enum ReportType
+    {
+        Resources,
+        ImpactedResources,
+        DomainAssessment,
+        ProgressComparison,
+        Governance,
+        FullAssessment
+    }
+}

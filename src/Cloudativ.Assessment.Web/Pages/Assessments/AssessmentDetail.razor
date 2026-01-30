@@ -1,0 +1,492 @@
+@page "/assessments/{RunId:guid}"
+@attribute [Authorize]
+@inject IAssessmentService AssessmentService
+@inject IReportService ReportService
+@inject ITenantService TenantService
+@inject NavigationManager NavigationManager
+@inject ISnackbar Snackbar
+@inject IJSRuntime JS
+@implements IDisposable
+@using FindingSeverity = Cloudativ.Assessment.Domain.Enums.Severity
+
+<PageTitle>Assessment Details - Cloudativ Assessment</PageTitle>
+
+@if (_isLoading)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+}
+else if (_run == null)
+{
+    <MudAlert Severity="Severity.Error">Assessment not found</MudAlert>
+}
+else
+{
+    <!-- Header -->
+    <div class="d-flex justify-space-between align-center mb-4">
+        <div class="d-flex align-center">
+            <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" OnClick="GoBack" />
+            <div class="ml-2">
+                <MudText Typo="Typo.h5" Style="font-weight: 600; color: #51627A;">Assessment Results</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">
+                    @_run.TenantName - @_run.StartedAt.ToString("MMM dd, yyyy HH:mm")
+                </MudText>
+            </div>
+        </div>
+        <div class="d-flex align-center gap-2">
+            <MudChip Size="Size.Medium" Color="@GetStatusColor(_run.Status)" Variant="Variant.Filled">
+                @_run.Status
+            </MudChip>
+            @if (_run.Status == AssessmentStatus.Completed)
+            {
+                <MudMenu Icon="@Icons.Material.Filled.Download" Label="Export" Variant="Variant.Filled" Color="Color.Primary">
+                    <MudMenuItem Icon="@Icons.Material.Filled.PictureAsPdf" OnClick="ExportToPdf" Disabled="@_isExporting">
+                        Export as PDF
+                    </MudMenuItem>
+                    <MudMenuItem Icon="@Icons.Material.Filled.TableChart" OnClick="ExportToExcel" Disabled="@_isExporting">
+                        Export as Excel
+                    </MudMenuItem>
+                </MudMenu>
+            }
+        </div>
+    </div>
+
+    <!-- Status Banner for Running/Pending -->
+    @if (_run.Status == AssessmentStatus.Running || _run.Status == AssessmentStatus.Pending)
+    {
+        <MudAlert Severity="Severity.Info" Class="mb-4">
+            <div class="d-flex align-center">
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-3" />
+                <span>Assessment is @(_run.Status == AssessmentStatus.Running ? "running" : "pending")... This page will auto-refresh.</span>
+            </div>
+        </MudAlert>
+    }
+    else if (_run.Status == AssessmentStatus.Failed)
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-4">
+            Assessment failed: @(_run.ErrorMessage ?? "Unknown error")
+        </MudAlert>
+    }
+
+    <MudGrid>
+        <!-- Overview Cards -->
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="2" Style="border-radius: 12px;">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Overall Score</MudText>
+                @if (_run.OverallScore.HasValue)
+                {
+                    <MudText Typo="Typo.h3" Style="@($"font-weight: 600; color: {GetScoreColor(_run.OverallScore.Value)}")">
+                        @_run.OverallScore%
+                    </MudText>
+                    <MudChip Size="Size.Small" Style="@($"background: {GetScoreColor(_run.OverallScore.Value)}; color: white;")">
+                        Grade @GetGrade(_run.OverallScore.Value)
+                    </MudChip>
+                }
+                else
+                {
+                    <MudText Typo="Typo.h3" Color="Color.Secondary">-</MudText>
+                }
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="2" Style="border-radius: 12px;">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Duration</MudText>
+                <MudText Typo="Typo.h4" Style="font-weight: 600;">
+                    @(_run.Duration?.ToString(@"mm\:ss") ?? "-")
+                </MudText>
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="2" Style="border-radius: 12px;">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Critical Findings</MudText>
+                <MudText Typo="Typo.h3" Style="font-weight: 600; color: #f44336;">
+                    @_findings.Count(f => f.Severity == FindingSeverity.Critical && !f.IsCompliant)
+                </MudText>
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="2" Style="border-radius: 12px;">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">High Findings</MudText>
+                <MudText Typo="Typo.h3" Style="font-weight: 600; color: #ff9800;">
+                    @_findings.Count(f => f.Severity == FindingSeverity.High && !f.IsCompliant)
+                </MudText>
+            </MudPaper>
+        </MudItem>
+
+        <!-- Domain Scores -->
+        <MudItem xs="12">
+            <MudPaper Class="pa-4" Elevation="2" Style="border-radius: 12px;">
+                <MudText Typo="Typo.h6" Class="mb-4">Domain Scores</MudText>
+                @if (_run.DomainScores.Any())
+                {
+                    <MudGrid>
+                        @foreach (var domain in _run.DomainScores.Values.OrderByDescending(d => d.Score))
+                        {
+                            <MudItem xs="12" sm="6" md="4">
+                                <MudPaper Class="pa-3" Elevation="1" Style="border-radius: 8px;">
+                                    <div class="d-flex justify-space-between align-center mb-2">
+                                        <MudText Typo="Typo.subtitle2">@domain.DisplayName</MudText>
+                                        @if (domain.IsAvailable)
+                                        {
+                                            <MudChip Size="Size.Small" Style="@($"background: {GetScoreColor(domain.Score)}; color: white;")">
+                                                @domain.Score% (@domain.Grade)
+                                            </MudChip>
+                                        }
+                                        else
+                                        {
+                                            <MudChip Size="Size.Small" Color="Color.Default">N/A</MudChip>
+                                        }
+                                    </div>
+                                    @if (domain.IsAvailable)
+                                    {
+                                        <MudProgressLinear Value="@domain.Score" Color="@GetProgressColor(domain.Score)" Class="mb-2" />
+                                        <div class="d-flex gap-2">
+                                            @if (domain.CriticalCount > 0)
+                                            {
+                                                <MudChip Size="Size.Small" Color="Color.Error" Variant="Variant.Outlined">@domain.CriticalCount Critical</MudChip>
+                                            }
+                                            @if (domain.HighCount > 0)
+                                            {
+                                                <MudChip Size="Size.Small" Color="Color.Warning" Variant="Variant.Outlined">@domain.HighCount High</MudChip>
+                                            }
+                                            @if (domain.PassedChecks > 0)
+                                            {
+                                                <MudChip Size="Size.Small" Color="Color.Success" Variant="Variant.Outlined">@domain.PassedChecks Passed</MudChip>
+                                            }
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary">@domain.UnavailableReason</MudText>
+                                    }
+                                </MudPaper>
+                            </MudItem>
+                        }
+                    </MudGrid>
+                }
+                else
+                {
+                    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="text-center py-4">
+                        No domain scores available yet
+                    </MudText>
+                }
+            </MudPaper>
+        </MudItem>
+
+        <!-- Findings -->
+        <MudItem xs="12">
+            <MudPaper Class="pa-4" Elevation="2" Style="border-radius: 12px;">
+                <div class="d-flex justify-space-between align-center mb-4">
+                    <MudText Typo="Typo.h6">Findings</MudText>
+                    <MudChipSet @bind-SelectedValues="_selectedSeverities" SelectionMode="SelectionMode.MultiSelection" CheckMark="true">
+                        <MudChip Value="@FindingSeverity.Critical" Color="Color.Error" Variant="Variant.Outlined">Critical</MudChip>
+                        <MudChip Value="@FindingSeverity.High" Color="Color.Warning" Variant="Variant.Outlined">High</MudChip>
+                        <MudChip Value="@FindingSeverity.Medium" Color="Color.Info" Variant="Variant.Outlined">Medium</MudChip>
+                        <MudChip Value="@FindingSeverity.Low" Color="Color.Default" Variant="Variant.Outlined">Low</MudChip>
+                    </MudChipSet>
+                </div>
+
+                @if (FilteredFindings.Any())
+                {
+                    <MudTable Items="@FilteredFindings" Hover="true" Dense="true" Striped="true">
+                        <HeaderContent>
+                            <MudTh>Severity</MudTh>
+                            <MudTh>Status</MudTh>
+                            <MudTh>Domain</MudTh>
+                            <MudTh>Title</MudTh>
+                            <MudTh>Description</MudTh>
+                            <MudTh></MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd>
+                                <MudChip Size="Size.Small" Color="@GetSeverityColor(context.Severity)" Variant="Variant.Filled">
+                                    @context.Severity
+                                </MudChip>
+                            </MudTd>
+                            <MudTd>
+                                @if (context.IsCompliant)
+                                {
+                                    <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" Size="Size.Small" />
+                                }
+                                else
+                                {
+                                    <MudIcon Icon="@Icons.Material.Filled.Warning" Color="Color.Error" Size="Size.Small" />
+                                }
+                            </MudTd>
+                            <MudTd>@context.DomainDisplayName</MudTd>
+                            <MudTd>
+                                <MudText Typo="Typo.body2" Style="font-weight: 500;">@context.Title</MudText>
+                                @if (!string.IsNullOrEmpty(context.CheckId))
+                                {
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">@context.CheckId</MudText>
+                                }
+                            </MudTd>
+                            <MudTd Style="max-width: 400px;">
+                                <MudText Typo="Typo.body2" Style="overflow: hidden; text-overflow: ellipsis;">
+                                    @context.Description
+                                </MudText>
+                            </MudTd>
+                            <MudTd>
+                                <MudIconButton Icon="@Icons.Material.Filled.Info" Size="Size.Small"
+                                               OnClick="@(() => ShowFindingDetail(context))" />
+                            </MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                }
+                else
+                {
+                    <MudAlert Severity="Severity.Success" Dense="true">
+                        No findings match the current filter
+                    </MudAlert>
+                }
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+}
+
+<!-- Finding Detail Dialog -->
+<MudDialog @bind-Visible="_showFindingDialog" Options="@(new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true })">
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.BugReport" Class="mr-2" />
+            @_selectedFinding?.Title
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (_selectedFinding != null)
+        {
+            <MudGrid>
+                <MudItem xs="12" sm="6">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Severity</MudText>
+                    <MudChip Color="@GetSeverityColor(_selectedFinding.Severity)" Variant="Variant.Filled">@_selectedFinding.Severity</MudChip>
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Domain</MudText>
+                    <MudText>@_selectedFinding.DomainDisplayName</MudText>
+                </MudItem>
+                <MudItem xs="12">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Description</MudText>
+                    <MudText>@_selectedFinding.Description</MudText>
+                </MudItem>
+                @if (!string.IsNullOrEmpty(_selectedFinding.Remediation))
+                {
+                    <MudItem xs="12">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Remediation</MudText>
+                        <MudAlert Severity="Severity.Info" Dense="true">@_selectedFinding.Remediation</MudAlert>
+                    </MudItem>
+                }
+                @if (_selectedFinding.AffectedResources.Any())
+                {
+                    <MudItem xs="12">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Affected Resources</MudText>
+                        <MudList Dense="true">
+                            @foreach (var resource in _selectedFinding.AffectedResources.Take(10))
+                            {
+                                <MudListItem Icon="@Icons.Material.Filled.Person">@resource</MudListItem>
+                            }
+                            @if (_selectedFinding.AffectedResources.Count > 10)
+                            {
+                                <MudListItem>...and @(_selectedFinding.AffectedResources.Count - 10) more</MudListItem>
+                            }
+                        </MudList>
+                    </MudItem>
+                }
+                @if (!string.IsNullOrEmpty(_selectedFinding.References))
+                {
+                    <MudItem xs="12">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">References</MudText>
+                        <MudLink Href="@_selectedFinding.References" Target="_blank">@_selectedFinding.References</MudLink>
+                    </MudItem>
+                }
+            </MudGrid>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => _showFindingDialog = false)">Close</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [Parameter]
+    public Guid RunId { get; set; }
+
+    private bool _isLoading = true;
+    private AssessmentRunDto? _run;
+    private List<FindingDto> _findings = new();
+    private ICollection<object> _selectedSeverities = new List<object> { FindingSeverity.Critical, FindingSeverity.High };
+    private System.Threading.Timer? _refreshTimer;
+
+    private bool _showFindingDialog;
+    private FindingDto? _selectedFinding;
+    private bool _isExporting;
+
+    private IEnumerable<FindingDto> FilteredFindings => _findings
+        .Where(f => !_selectedSeverities.Any() || _selectedSeverities.Cast<FindingSeverity>().Contains(f.Severity))
+        .OrderBy(f => f.IsCompliant)
+        .ThenByDescending(f => f.Severity)
+        .ThenBy(f => f.DomainDisplayName);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDataAsync();
+
+        // Auto-refresh if running/pending
+        if (_run?.Status == AssessmentStatus.Running || _run?.Status == AssessmentStatus.Pending)
+        {
+            _refreshTimer = new System.Threading.Timer(async _ =>
+            {
+                await InvokeAsync(async () =>
+                {
+                    await LoadDataAsync();
+                    StateHasChanged();
+
+                    if (_run?.Status != AssessmentStatus.Running && _run?.Status != AssessmentStatus.Pending)
+                    {
+                        _refreshTimer?.Dispose();
+                        _refreshTimer = null;
+                    }
+                });
+            }, null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
+        }
+    }
+
+    private async Task LoadDataAsync()
+    {
+        try
+        {
+            _run = await AssessmentService.GetRunByIdAsync(RunId);
+            if (_run != null)
+            {
+                _findings = (await AssessmentService.GetFindingsAsync(RunId)).ToList();
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading assessment: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private void GoBack()
+    {
+        NavigationManager.NavigateTo($"/tenants/{_run?.TenantId}");
+    }
+
+    private void ShowFindingDetail(FindingDto finding)
+    {
+        _selectedFinding = finding;
+        _showFindingDialog = true;
+    }
+
+    private async Task ExportToPdf()
+    {
+        if (_isExporting) return;
+
+        _isExporting = true;
+        StateHasChanged();
+
+        try
+        {
+            var pdfBytes = await ReportService.GeneratePdfReportAsync(RunId);
+            var fileName = $"Assessment_{_run?.TenantName}_{_run?.StartedAt:yyyyMMdd_HHmm}.pdf";
+            await DownloadFileAsync(pdfBytes, fileName, "application/pdf");
+            Snackbar.Add("PDF report downloaded successfully", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error generating PDF: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isExporting = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ExportToExcel()
+    {
+        if (_isExporting) return;
+
+        _isExporting = true;
+        StateHasChanged();
+
+        try
+        {
+            var excelBytes = await ReportService.GenerateExcelReportAsync(RunId);
+            var fileName = $"Assessment_{_run?.TenantName}_{_run?.StartedAt:yyyyMMdd_HHmm}.xlsx";
+            await DownloadFileAsync(excelBytes, fileName, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+            Snackbar.Add("Excel report downloaded successfully", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error generating Excel: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isExporting = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task DownloadFileAsync(byte[] bytes, string fileName, string contentType)
+    {
+        var base64 = Convert.ToBase64String(bytes);
+        await JS.InvokeVoidAsync("downloadFile", fileName, contentType, base64);
+    }
+
+    public void Dispose()
+    {
+        _refreshTimer?.Dispose();
+    }
+
+    private Color GetStatusColor(AssessmentStatus status) => status switch
+    {
+        AssessmentStatus.Completed => Color.Success,
+        AssessmentStatus.Running => Color.Info,
+        AssessmentStatus.Failed => Color.Error,
+        AssessmentStatus.Cancelled => Color.Warning,
+        AssessmentStatus.Pending => Color.Default,
+        _ => Color.Default
+    };
+
+    private string GetScoreColor(int score) => score switch
+    {
+        >= 90 => "#4CAF50",
+        >= 80 => "#8BC34A",
+        >= 70 => "#FFC107",
+        >= 60 => "#FF9800",
+        _ => "#f44336"
+    };
+
+    private Color GetProgressColor(int score) => score switch
+    {
+        >= 90 => Color.Success,
+        >= 80 => Color.Success,
+        >= 70 => Color.Warning,
+        >= 60 => Color.Warning,
+        _ => Color.Error
+    };
+
+    private string GetGrade(int score) => score switch
+    {
+        >= 90 => "A",
+        >= 80 => "B",
+        >= 70 => "C",
+        >= 60 => "D",
+        _ => "F"
+    };
+
+    private Color GetSeverityColor(FindingSeverity severity) => severity switch
+    {
+        FindingSeverity.Critical => Color.Error,
+        FindingSeverity.High => Color.Warning,
+        FindingSeverity.Medium => Color.Info,
+        FindingSeverity.Low => Color.Default,
+        _ => Color.Default
+    };
+}

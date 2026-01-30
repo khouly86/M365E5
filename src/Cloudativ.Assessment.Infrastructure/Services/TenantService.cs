@@ -13,6 +13,7 @@ public class TenantService : ITenantService
     private readonly IUnitOfWork _unitOfWork;
     private readonly IGraphClientFactory _graphClientFactory;
     private readonly IEncryptionService _encryptionService;
+    private readonly ISubscriptionService _subscriptionService;
     private readonly ILogger<TenantService> _logger;
 
     // Required Graph permissions for the assessment app
@@ -41,11 +42,13 @@ public class TenantService : ITenantService
         IUnitOfWork unitOfWork,
         IGraphClientFactory graphClientFactory,
         IEncryptionService encryptionService,
+        ISubscriptionService subscriptionService,
         ILogger<TenantService> logger)
     {
         _unitOfWork = unitOfWork;
         _graphClientFactory = graphClientFactory;
         _encryptionService = encryptionService;
+        _subscriptionService = subscriptionService;
         _logger = logger;
     }
 
@@ -89,13 +92,18 @@ public class TenantService : ITenantService
             AzureTenantId = dto.AzureTenantId,
             Industry = dto.Industry,
             ContactEmail = dto.ContactEmail,
-            OnboardingStatus = OnboardingStatus.Pending
+            OnboardingStatus = OnboardingStatus.Validated, // Set as validated since connection was tested
+            AuthenticationType = dto.AuthenticationType ?? "AppRegistration",
+            SelectedComplianceStandards = dto.ComplianceStandards.Any()
+                ? string.Join(",", dto.ComplianceStandards)
+                : null
         };
 
-        if (!string.IsNullOrEmpty(dto.ClientId) && !string.IsNullOrEmpty(dto.ClientSecret))
+        if (dto.AuthenticationType == "AppRegistration" && !string.IsNullOrEmpty(dto.ClientId) && !string.IsNullOrEmpty(dto.SecretValue))
         {
             tenant.ClientId = dto.ClientId;
-            tenant.ClientSecretEncrypted = _encryptionService.Encrypt(dto.ClientSecret);
+            tenant.SecretId = dto.SecretId;
+            tenant.ClientSecretEncrypted = _encryptionService.Encrypt(dto.SecretValue);
         }
 
         await _unitOfWork.Tenants.AddAsync(tenant, cancellationToken);
@@ -108,6 +116,17 @@ public class TenantService : ITenantService
         await _unitOfWork.TenantSettings.AddAsync(settings, cancellationToken);
 
         await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        // Create trial subscription for the new tenant
+        try
+        {
+            await _subscriptionService.CreateTrialAsync(tenant.Id, cancellationToken);
+            _logger.LogInformation("Created trial subscription for tenant: {TenantName} ({TenantId})", tenant.Name, tenant.Id);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to create trial subscription for tenant {TenantId}", tenant.Id);
+        }
 
         _logger.LogInformation("Created new tenant: {TenantName} ({TenantId})", tenant.Name, tenant.Id);
 
@@ -255,6 +274,309 @@ public class TenantService : ITenantService
         await _unitOfWork.SaveChangesAsync(cancellationToken);
     }
 
+    public async Task<ConnectionTestResult> TestConnectionAsync(string azureTenantId, string clientId, string clientSecret, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(azureTenantId))
+        {
+            return new ConnectionTestResult
+            {
+                Success = false,
+                ErrorCode = "MISSING_TENANT_ID",
+                ErrorMessage = "Azure Tenant ID is required. You can find this in Azure Portal > Azure Active Directory > Overview.",
+                RequiredPermissions = RequiredPermissions
+            };
+        }
+
+        if (string.IsNullOrWhiteSpace(clientId))
+        {
+            return new ConnectionTestResult
+            {
+                Success = false,
+                ErrorCode = "MISSING_CLIENT_ID",
+                ErrorMessage = "Application (Client) ID is required. You can find this in Azure Portal > App registrations > Your app > Overview.",
+                RequiredPermissions = RequiredPermissions
+            };
+        }
+
+        if (string.IsNullOrWhiteSpace(clientSecret))
+        {
+            return new ConnectionTestResult
+            {
+                Success = false,
+                ErrorCode = "MISSING_CLIENT_SECRET",
+                ErrorMessage = "Client Secret is required. Create one in Azure Portal > App registrations > Your app > Certificates & secrets.",
+                RequiredPermissions = RequiredPermissions
+            };
+        }
+
+        // Validate GUID format
+        if (!Guid.TryParse(azureTenantId.Trim(), out _))
+        {
+            return new ConnectionTestResult
+            {
+                Success = false,
+                ErrorCode = "INVALID_TENANT_ID",
+                ErrorMessage = "Invalid Azure Tenant ID format. It should be a GUID (e.g., xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx).",
+                RequiredPermissions = RequiredPermissions
+            };
+        }
+
+        if (!Guid.TryParse(clientId.Trim(), out _))
+        {
+            return new ConnectionTestResult
+            {
+                Success = false,
+                ErrorCode = "INVALID_CLIENT_ID",
+                ErrorMessage = "Invalid Application (Client) ID format. It should be a GUID (e.g., xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx).",
+                RequiredPermissions = RequiredPermissions
+            };
+        }
+
+        try
+        {
+            _logger.LogInformation("Testing connection for Azure tenant: {TenantId}", azureTenantId);
+
+            var graphClient = await _graphClientFactory.CreateClientAsync(
+                clientId.Trim(),
+                clientSecret,
+                azureTenantId.Trim(),
+                cancellationToken);
+
+            // Test basic connection by getting organization info
+            var isConnected = await graphClient.TestConnectionAsync(cancellationToken);
+            if (!isConnected)
+            {
+                return new ConnectionTestResult
+                {
+                    Success = false,
+                    ErrorCode = "CONNECTION_FAILED",
+                    ErrorMessage = "Failed to connect to Microsoft Graph API. Please verify:\n• The Azure Tenant ID matches your Azure AD directory\n• The Application (Client) ID is correct\n• The Client Secret is valid and not expired\n• The app registration exists in this tenant",
+                    RequiredPermissions = RequiredPermissions
+                };
+            }
+
+            // Get organization details for confirmation
+            string? orgName = null;
+            string? orgId = null;
+            try
+            {
+                var orgJson = await graphClient.GetRawJsonAsync("organization", cancellationToken);
+                if (!string.IsNullOrEmpty(orgJson))
+                {
+                    using var doc = System.Text.Json.JsonDocument.Parse(orgJson);
+                    if (doc.RootElement.TryGetProperty("value", out var valueElement) && valueElement.GetArrayLength() > 0)
+                    {
+                        var firstOrg = valueElement[0];
+                        if (firstOrg.TryGetProperty("displayName", out var nameElement))
+                            orgName = nameElement.GetString();
+                        if (firstOrg.TryGetProperty("id", out var idElement))
+                            orgId = idElement.GetString();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Could not retrieve organization details");
+            }
+
+            // Get granted permissions
+            var grantedPermissions = await graphClient.GetGrantedPermissionsAsync(cancellationToken);
+            var missingPermissions = RequiredPermissions
+                .Where(p => !grantedPermissions.Contains(p, StringComparer.OrdinalIgnoreCase))
+                .ToList();
+
+            return new ConnectionTestResult
+            {
+                Success = true,
+                OrganizationName = orgName,
+                OrganizationId = orgId,
+                RequiredPermissions = RequiredPermissions,
+                GrantedPermissions = grantedPermissions,
+                MissingPermissions = missingPermissions,
+                ErrorMessage = missingPermissions.Any()
+                    ? $"Connection successful but {missingPermissions.Count} permission(s) are missing. Some assessment features may be limited."
+                    : null
+            };
+        }
+        catch (Azure.Identity.AuthenticationFailedException ex)
+        {
+            _logger.LogError(ex, "Authentication failed for tenant {TenantId}", azureTenantId);
+
+            var errorMessage = "Authentication failed. ";
+            if (ex.Message.Contains("AADSTS700016"))
+            {
+                errorMessage += "The Application (Client) ID was not found in this tenant. Verify the app is registered in the correct Azure AD tenant.";
+            }
+            else if (ex.Message.Contains("AADSTS7000215"))
+            {
+                errorMessage += "Invalid Client Secret. The secret may be incorrect, expired, or deleted. Create a new secret in Azure Portal.";
+            }
+            else if (ex.Message.Contains("AADSTS90002"))
+            {
+                errorMessage += "The Azure Tenant ID was not found. Verify you're using the correct tenant ID from Azure Portal.";
+            }
+            else if (ex.Message.Contains("AADSTS50034"))
+            {
+                errorMessage += "The user account does not exist in this tenant.";
+            }
+            else
+            {
+                errorMessage += ex.Message;
+            }
+
+            return new ConnectionTestResult
+            {
+                Success = false,
+                ErrorCode = "AUTH_FAILED",
+                ErrorMessage = errorMessage,
+                RequiredPermissions = RequiredPermissions
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Connection test failed for tenant {TenantId}", azureTenantId);
+            return new ConnectionTestResult
+            {
+                Success = false,
+                ErrorCode = "UNKNOWN_ERROR",
+                ErrorMessage = $"Connection test failed: {ex.Message}",
+                RequiredPermissions = RequiredPermissions
+            };
+        }
+    }
+
+    public async Task<ConnectionTestResult> TestConnectionWithDelegatedAuthAsync(string azureTenantId, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(azureTenantId))
+        {
+            return new ConnectionTestResult
+            {
+                Success = false,
+                ErrorCode = "MISSING_TENANT_ID",
+                ErrorMessage = "Azure Tenant ID is required. You can find this in Azure Portal > Azure Active Directory > Overview.",
+                RequiredPermissions = RequiredPermissions
+            };
+        }
+
+        // Validate GUID format
+        if (!Guid.TryParse(azureTenantId.Trim(), out _))
+        {
+            return new ConnectionTestResult
+            {
+                Success = false,
+                ErrorCode = "INVALID_TENANT_ID",
+                ErrorMessage = "Invalid Azure Tenant ID format. It should be a GUID (e.g., xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx).",
+                RequiredPermissions = RequiredPermissions
+            };
+        }
+
+        try
+        {
+            _logger.LogInformation("Testing delegated auth connection for Azure tenant: {TenantId}", azureTenantId);
+
+            var graphClient = await _graphClientFactory.CreateDelegatedClientAsync(
+                azureTenantId.Trim(),
+                cancellationToken);
+
+            // Test basic connection by getting organization info
+            var isConnected = await graphClient.TestConnectionAsync(cancellationToken);
+            if (!isConnected)
+            {
+                return new ConnectionTestResult
+                {
+                    Success = false,
+                    ErrorCode = "CONNECTION_FAILED",
+                    ErrorMessage = "Failed to connect to Microsoft Graph API. Please verify:\n• The Azure Tenant ID matches your Azure AD directory\n• You have the required administrator permissions\n• You completed the sign-in process successfully",
+                    RequiredPermissions = RequiredPermissions
+                };
+            }
+
+            // Get organization details for confirmation
+            string? orgName = null;
+            string? orgId = null;
+            try
+            {
+                var orgJson = await graphClient.GetRawJsonAsync("organization", cancellationToken);
+                if (!string.IsNullOrEmpty(orgJson))
+                {
+                    using var doc = System.Text.Json.JsonDocument.Parse(orgJson);
+                    if (doc.RootElement.TryGetProperty("value", out var valueElement) && valueElement.GetArrayLength() > 0)
+                    {
+                        var firstOrg = valueElement[0];
+                        if (firstOrg.TryGetProperty("displayName", out var nameElement))
+                            orgName = nameElement.GetString();
+                        if (firstOrg.TryGetProperty("id", out var idElement))
+                            orgId = idElement.GetString();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Could not retrieve organization details");
+            }
+
+            // Get granted permissions
+            var grantedPermissions = await graphClient.GetGrantedPermissionsAsync(cancellationToken);
+            var missingPermissions = RequiredPermissions
+                .Where(p => !grantedPermissions.Contains(p, StringComparer.OrdinalIgnoreCase))
+                .ToList();
+
+            return new ConnectionTestResult
+            {
+                Success = true,
+                OrganizationName = orgName,
+                OrganizationId = orgId,
+                RequiredPermissions = RequiredPermissions,
+                GrantedPermissions = grantedPermissions,
+                MissingPermissions = missingPermissions,
+                ErrorMessage = missingPermissions.Any()
+                    ? $"Connection successful but {missingPermissions.Count} permission(s) are missing. Some assessment features may be limited."
+                    : null
+            };
+        }
+        catch (Azure.Identity.AuthenticationFailedException ex)
+        {
+            _logger.LogError(ex, "Delegated authentication failed for tenant {TenantId}", azureTenantId);
+
+            var errorMessage = "Authentication failed. ";
+            if (ex.Message.Contains("AADSTS90002"))
+            {
+                errorMessage += "The Azure Tenant ID was not found. Verify you're using the correct tenant ID from Azure Portal.";
+            }
+            else if (ex.Message.Contains("AADSTS50034"))
+            {
+                errorMessage += "The user account does not exist in this tenant.";
+            }
+            else if (ex.Message.Contains("AADSTS65001"))
+            {
+                errorMessage += "The user or administrator has not consented to use the application. Please sign in again and grant the required permissions.";
+            }
+            else
+            {
+                errorMessage += ex.Message;
+            }
+
+            return new ConnectionTestResult
+            {
+                Success = false,
+                ErrorCode = "AUTH_FAILED",
+                ErrorMessage = errorMessage,
+                RequiredPermissions = RequiredPermissions
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Delegated auth connection test failed for tenant {TenantId}", azureTenantId);
+            return new ConnectionTestResult
+            {
+                Success = false,
+                ErrorCode = "UNKNOWN_ERROR",
+                ErrorMessage = $"Connection test failed: {ex.Message}",
+                RequiredPermissions = RequiredPermissions
+            };
+        }
+    }
+
     private static TenantDto MapToDto(Tenant tenant, AssessmentRun? latestRun, int totalRuns)
     {
         return new TenantDto
@@ -269,7 +591,10 @@ public class TenantService : ITenantService
             CreatedAt = tenant.CreatedAt,
             LastAssessmentScore = latestRun?.OverallScore,
             LastAssessmentDate = latestRun?.CompletedAt ?? latestRun?.StartedAt,
-            TotalAssessments = totalRuns
+            TotalAssessments = totalRuns,
+            SelectedComplianceStandards = string.IsNullOrEmpty(tenant.SelectedComplianceStandards)
+                ? new List<string>()
+                : tenant.SelectedComplianceStandards.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList()
         };
     }
 }

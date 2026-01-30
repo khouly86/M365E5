@@ -2,6 +2,8 @@
 @inject NavigationManager NavigationManager
 @inject AuthenticationStateService AuthService
 
+@implements IDisposable
+
 <MudLayout>
     <MudAppBar Elevation="1" Style="background: linear-gradient(135deg, #51627A 0%, #3d4a5c 100%);">
         <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="@ToggleDrawer" />
@@ -48,40 +50,72 @@
             </MudNavLink>
 
             <MudDivider Class="my-2" Style="border-color: rgba(255,255,255,0.2);" />
-            <MudText Typo="Typo.caption" Class="px-4 py-2" Style="color: rgba(255,255,255,0.6);">Security Domains</MudText>
+            <MudNavLink Href="/domains" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.GridView">
+                Security Domains
+            </MudNavLink>
 
-            <MudNavLink Href="/domains/iam" Icon="@Icons.Material.Filled.Security">
-                Identity & Access
-            </MudNavLink>
-            <MudNavLink Href="/domains/pim" Icon="@Icons.Material.Filled.AdminPanelSettings">
-                Privileged Access
-            </MudNavLink>
-            <MudNavLink Href="/domains/devices" Icon="@Icons.Material.Filled.Devices">
-                Device & Endpoint
-            </MudNavLink>
-            <MudNavLink Href="/domains/email" Icon="@Icons.Material.Filled.Email">
-                Email Security
-            </MudNavLink>
-            <MudNavLink Href="/domains/defender" Icon="@Icons.Material.Filled.Shield">
-                Microsoft Defender
-            </MudNavLink>
-            <MudNavLink Href="/domains/dlp" Icon="@Icons.Material.Filled.Lock">
-                Data Protection
-            </MudNavLink>
-            <MudNavLink Href="/domains/audit" Icon="@Icons.Material.Filled.FactCheck">
-                Audit & Logging
-            </MudNavLink>
-            <MudNavLink Href="/domains/apps" Icon="@Icons.Material.Filled.Apps">
-                App Governance
-            </MudNavLink>
-            <MudNavLink Href="/domains/collaboration" Icon="@Icons.Material.Filled.Groups">
-                Collaboration
-            </MudNavLink>
+            @if (CanAccessDomain(AssessmentDomain.IdentityAndAccess))
+            {
+                <MudNavLink Href="/domains/iam" Icon="@Icons.Material.Filled.Security">
+                    Identity & Access
+                </MudNavLink>
+            }
+            @if (CanAccessDomain(AssessmentDomain.PrivilegedAccess))
+            {
+                <MudNavLink Href="/domains/pim" Icon="@Icons.Material.Filled.AdminPanelSettings">
+                    Privileged Access
+                </MudNavLink>
+            }
+            @if (CanAccessDomain(AssessmentDomain.DeviceEndpoint))
+            {
+                <MudNavLink Href="/domains/device" Icon="@Icons.Material.Filled.Devices">
+                    Device & Endpoint
+                </MudNavLink>
+            }
+            @if (CanAccessDomain(AssessmentDomain.ExchangeEmailSecurity))
+            {
+                <MudNavLink Href="/domains/exchange" Icon="@Icons.Material.Filled.Email">
+                    Email Security
+                </MudNavLink>
+            }
+            @if (CanAccessDomain(AssessmentDomain.MicrosoftDefender))
+            {
+                <MudNavLink Href="/domains/defender" Icon="@Icons.Material.Filled.Shield">
+                    Microsoft Defender
+                </MudNavLink>
+            }
+            @if (CanAccessDomain(AssessmentDomain.DataProtectionCompliance))
+            {
+                <MudNavLink Href="/domains/dlp" Icon="@Icons.Material.Filled.Lock">
+                    Data Protection
+                </MudNavLink>
+            }
+            @if (CanAccessDomain(AssessmentDomain.AuditLogging))
+            {
+                <MudNavLink Href="/domains/audit" Icon="@Icons.Material.Filled.FactCheck">
+                    Audit & Logging
+                </MudNavLink>
+            }
+            @if (CanAccessDomain(AssessmentDomain.AppGovernance))
+            {
+                <MudNavLink Href="/domains/apps" Icon="@Icons.Material.Filled.Apps">
+                    App Governance
+                </MudNavLink>
+            }
+            @if (CanAccessDomain(AssessmentDomain.CollaborationSecurity))
+            {
+                <MudNavLink Href="/domains/collaboration" Icon="@Icons.Material.Filled.Groups">
+                    Collaboration
+                </MudNavLink>
+            }
 
             <MudDivider Class="my-2" Style="border-color: rgba(255,255,255,0.2);" />
 
             <MudNavLink Href="/reports" Icon="@Icons.Material.Filled.Summarize">
                 Reports
+            </MudNavLink>
+            <MudNavLink Href="/governance" Icon="@Icons.Material.Filled.Gavel">
+                Governance
             </MudNavLink>
 
             <AuthorizeView Roles="SuperAdmin">
@@ -106,6 +140,43 @@
 
 @code {
     private bool _drawerOpen = true;
+    private List<AssessmentDomain> _allowedDomains = new();
+    private bool _domainsLoaded = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAllowedDomainsAsync();
+        NavigationManager.LocationChanged += OnLocationChanged;
+    }
+
+    private async void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        // Reload allowed domains when navigating (user may have logged in/out)
+        await LoadAllowedDomainsAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task LoadAllowedDomainsAsync()
+    {
+        try
+        {
+            _allowedDomains = await AuthService.GetAllowedDomainsAsync();
+            _domainsLoaded = true;
+        }
+        catch
+        {
+            _allowedDomains = new List<AssessmentDomain>();
+        }
+    }
+
+    private bool CanAccessDomain(AssessmentDomain domain)
+    {
+        // If domains not yet loaded, show all (will be filtered on page load)
+        if (!_domainsLoaded)
+            return true;
+
+        return _allowedDomains.Contains(domain);
+    }
 
     private void ToggleDrawer()
     {
@@ -115,5 +186,10 @@
     private void Logout()
     {
         NavigationManager.NavigateTo("/Account/Logout", forceLoad: true);
+    }
+
+    public void Dispose()
+    {
+        NavigationManager.LocationChanged -= OnLocationChanged;
     }
 }

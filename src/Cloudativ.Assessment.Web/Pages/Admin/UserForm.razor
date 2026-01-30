@@ -1,0 +1,485 @@
+@page "/admin/users/new"
+@page "/admin/users/{UserId:guid}"
+@attribute [Authorize(Roles = "SuperAdmin")]
+@inject IUserService UserService
+@inject ITenantService TenantService
+@inject AuthenticationStateService AuthService
+@inject NavigationManager NavigationManager
+@inject ISnackbar Snackbar
+@using Cloudativ.Assessment.Application.DTOs
+@using Cloudativ.Assessment.Application.Interfaces
+@using Cloudativ.Assessment.Domain.Enums
+@using Cloudativ.Assessment.Web.Services
+@using System.ComponentModel.DataAnnotations
+
+<PageTitle>@(_isEditMode ? "Edit User" : "Add User") - Cloudativ Assessment</PageTitle>
+
+<div class="d-flex align-center mb-4">
+    <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" OnClick="@(() => NavigationManager.NavigateTo("/admin/users"))" />
+    <MudText Typo="Typo.h5" Style="font-weight: 600; color: #51627A;">@(_isEditMode ? "Edit User" : "Add New User")</MudText>
+</div>
+
+@if (_isLoading)
+{
+    <div class="d-flex justify-center align-center" style="min-height: 400px;">
+        <MudProgressCircular Indeterminate="true" Color="Color.Primary" />
+    </div>
+}
+else
+{
+    <MudPaper Class="pa-6" Elevation="2" Style="border-radius: 12px; max-width: 800px;">
+        <EditForm Model="@_model" OnValidSubmit="HandleSubmit">
+            <DataAnnotationsValidator />
+
+            @* User Information Section *@
+            <div class="d-flex align-center mb-4">
+                <MudAvatar Color="Color.Primary" Size="Size.Small" Class="mr-2">
+                    <MudIcon Icon="@Icons.Material.Filled.Person" />
+                </MudAvatar>
+                <MudText Typo="Typo.h6" Style="color: #51627A;">User Information</MudText>
+            </div>
+
+            <MudGrid>
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="_model.Email"
+                                  Label="Email Address"
+                                  Required="true"
+                                  RequiredError="Email is required"
+                                  Variant="Variant.Outlined"
+                                  InputType="InputType.Email"
+                                  Disabled="@_isEditMode"
+                                  HelperText="@(_isEditMode ? "Email cannot be changed" : "User's email for login")"
+                                  Adornment="Adornment.Start"
+                                  AdornmentIcon="@Icons.Material.Filled.Email" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="_model.DisplayName"
+                                  Label="Display Name"
+                                  Required="true"
+                                  RequiredError="Display name is required"
+                                  Variant="Variant.Outlined"
+                                  HelperText="Name shown in the application"
+                                  Adornment="Adornment.Start"
+                                  AdornmentIcon="@Icons.Material.Filled.Badge" />
+                </MudItem>
+
+                @if (!_isEditMode)
+                {
+                    <MudItem xs="12" md="6">
+                        <MudTextField @bind-Value="_model.Password"
+                                      Label="Password"
+                                      Required="true"
+                                      RequiredError="Password is required"
+                                      InputType="@(_showPassword ? InputType.Text : InputType.Password)"
+                                      Variant="Variant.Outlined"
+                                      HelperText="Min 8 chars with uppercase, lowercase, number, and special char"
+                                      Adornment="Adornment.End"
+                                      AdornmentIcon="@(_showPassword ? Icons.Material.Filled.Visibility : Icons.Material.Filled.VisibilityOff)"
+                                      OnAdornmentClick="@(() => _showPassword = !_showPassword)" />
+                    </MudItem>
+                    <MudItem xs="12" md="6">
+                        <MudTextField @bind-Value="_model.ConfirmPassword"
+                                      Label="Confirm Password"
+                                      Required="true"
+                                      RequiredError="Please confirm the password"
+                                      InputType="@(_showPassword ? InputType.Text : InputType.Password)"
+                                      Variant="Variant.Outlined"
+                                      Adornment="Adornment.End"
+                                      AdornmentIcon="@(_showPassword ? Icons.Material.Filled.Visibility : Icons.Material.Filled.VisibilityOff)"
+                                      OnAdornmentClick="@(() => _showPassword = !_showPassword)" />
+                    </MudItem>
+                }
+            </MudGrid>
+
+            <MudDivider Class="my-6" />
+
+            @* Role & Permissions Section *@
+            <div class="d-flex align-center mb-4">
+                <MudAvatar Color="Color.Primary" Size="Size.Small" Class="mr-2">
+                    <MudIcon Icon="@Icons.Material.Filled.Security" />
+                </MudAvatar>
+                <MudText Typo="Typo.h6" Style="color: #51627A;">Role & Permissions</MudText>
+            </div>
+
+            <MudGrid>
+                <MudItem xs="12" md="6">
+                    <MudSelect @bind-Value="_model.Role"
+                               Label="Role"
+                               Required="true"
+                               Variant="Variant.Outlined"
+                               HelperText="User's access level in the application"
+                               Disabled="@(_isEditMode && UserId == _currentUserId)">
+                        <MudSelectItem Value="@AppRole.SuperAdmin">
+                            <div class="d-flex align-center">
+                                <MudIcon Icon="@Icons.Material.Filled.AdminPanelSettings" Color="Color.Error" Class="mr-2" Size="Size.Small" />
+                                Super Admin
+                            </div>
+                        </MudSelectItem>
+                        <MudSelectItem Value="@AppRole.TenantAdmin">
+                            <div class="d-flex align-center">
+                                <MudIcon Icon="@Icons.Material.Filled.ManageAccounts" Color="Color.Warning" Class="mr-2" Size="Size.Small" />
+                                Tenant Admin
+                            </div>
+                        </MudSelectItem>
+                        <MudSelectItem Value="@AppRole.DomainAdmin">
+                            <div class="d-flex align-center">
+                                <MudIcon Icon="@Icons.Material.Filled.Domain" Color="Color.Secondary" Class="mr-2" Size="Size.Small" />
+                                Domain Admin
+                            </div>
+                        </MudSelectItem>
+                        <MudSelectItem Value="@AppRole.Auditor">
+                            <div class="d-flex align-center">
+                                <MudIcon Icon="@Icons.Material.Filled.Person" Color="Color.Info" Class="mr-2" Size="Size.Small" />
+                                Auditor
+                            </div>
+                        </MudSelectItem>
+                    </MudSelect>
+                    @if (_isEditMode && UserId == _currentUserId)
+                    {
+                        <MudText Typo="Typo.caption" Color="Color.Warning" Class="mt-1">
+                            You cannot change your own role
+                        </MudText>
+                    }
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    @if (_isEditMode)
+                    {
+                        <MudSwitch @bind-Value="_model.IsActive"
+                                   Label="@(_model.IsActive ? "Active" : "Inactive")"
+                                   Color="Color.Success"
+                                   Disabled="@(UserId == _currentUserId)" />
+                        @if (UserId == _currentUserId)
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Warning">
+                                You cannot deactivate your own account
+                            </MudText>
+                        }
+                    }
+                </MudItem>
+            </MudGrid>
+
+            @* Role Description *@
+            <MudAlert Severity="MudBlazor.Severity.Info" Dense="true" Class="my-4">
+                <strong>@GetRoleDisplayName(_model.Role):</strong> @GetRoleDescription(_model.Role)
+            </MudAlert>
+
+            @* Domain Access Section (only for Domain Admin role) *@
+            @if (_model.Role == AppRole.DomainAdmin)
+            {
+                <MudDivider Class="my-6" />
+
+                <div class="d-flex align-center mb-4">
+                    <MudAvatar Color="Color.Secondary" Size="Size.Small" Class="mr-2">
+                        <MudIcon Icon="@Icons.Material.Filled.Security" />
+                    </MudAvatar>
+                    <MudText Typo="Typo.h6" Style="color: #51627A;">Domain Access</MudText>
+                </div>
+
+                <MudText Typo="Typo.body2" Class="mb-3" Style="color: var(--mud-palette-text-secondary);">
+                    Select which security assessment domains this user can access and manage.
+                </MudText>
+
+                <MudGrid>
+                    @foreach (AssessmentDomain domain in Enum.GetValues(typeof(AssessmentDomain)))
+                    {
+                        <MudItem xs="12" sm="6" md="4">
+                            <MudCheckBox T="bool"
+                                         Value="@(_model.SelectedDomains.Contains(domain))"
+                                         ValueChanged="@((bool isChecked) => ToggleDomain(domain, isChecked))"
+                                         Label="@GetDomainDisplayName(domain)"
+                                         Color="Color.Secondary"
+                                         Dense="true" />
+                        </MudItem>
+                    }
+                </MudGrid>
+
+                @if (!_model.SelectedDomains.Any())
+                {
+                    <MudAlert Severity="MudBlazor.Severity.Warning" Dense="true" Class="mt-3">
+                        At least one domain must be selected for Domain Admin users.
+                    </MudAlert>
+                }
+            }
+
+            <MudDivider Class="my-6" />
+
+            @* Tenant Access Section *@
+            <div class="d-flex align-center mb-4">
+                <MudAvatar Color="Color.Primary" Size="Size.Small" Class="mr-2">
+                    <MudIcon Icon="@Icons.Material.Filled.Business" />
+                </MudAvatar>
+                <MudText Typo="Typo.h6" Style="color: #51627A;">Tenant Access</MudText>
+            </div>
+
+            <MudText Typo="Typo.body2" Class="mb-3" Style="color: var(--mud-palette-text-secondary);">
+                Select which tenants this user can access. Leave empty to grant access to all tenants.
+            </MudText>
+
+            @if (_tenants.Any())
+            {
+                <MudSelect T="Guid"
+                           MultiSelection="true"
+                           @bind-SelectedValues="_model.SelectedTenantIds"
+                           Label="Tenant Access"
+                           Variant="Variant.Outlined"
+                           MultiSelectionTextFunc="@(new Func<List<string>, string>(GetMultiSelectionText))"
+                           Clearable="true"
+                           HelperText="Select specific tenants or leave empty for all tenants">
+                    @foreach (var tenant in _tenants)
+                    {
+                        <MudSelectItem Value="@tenant.Id">@tenant.Name (@tenant.Domain)</MudSelectItem>
+                    }
+                </MudSelect>
+            }
+            else
+            {
+                <MudAlert Severity="MudBlazor.Severity.Info" Dense="true">
+                    No tenants available. The user will have access to all tenants by default.
+                </MudAlert>
+            }
+
+            <MudDivider Class="my-6" />
+
+            @* Form Actions *@
+            <div class="d-flex justify-end gap-3">
+                <MudButton Variant="Variant.Text"
+                           Color="Color.Default"
+                           OnClick="@(() => NavigationManager.NavigateTo("/admin/users"))">
+                    Cancel
+                </MudButton>
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           ButtonType="ButtonType.Submit"
+                           Disabled="@_isSubmitting"
+                           StartIcon="@(_isSubmitting ? null : Icons.Material.Filled.Save)">
+                    @if (_isSubmitting)
+                    {
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                        <span>Saving...</span>
+                    }
+                    else
+                    {
+                        <span>@(_isEditMode ? "Save Changes" : "Create User")</span>
+                    }
+                </MudButton>
+            </div>
+        </EditForm>
+    </MudPaper>
+}
+
+@code {
+    [Parameter] public Guid? UserId { get; set; }
+
+    private UserFormModel _model = new();
+    private List<TenantDto> _tenants = new();
+    private bool _isEditMode => UserId.HasValue;
+    private bool _isLoading = true;
+    private bool _isSubmitting = false;
+    private bool _showPassword = false;
+    private Guid _currentUserId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var currentUser = await AuthService.GetCurrentUserAsync();
+        _currentUserId = currentUser?.Id ?? Guid.Empty;
+
+        await LoadTenants();
+
+        if (_isEditMode)
+        {
+            await LoadUser();
+        }
+        else
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task LoadTenants()
+    {
+        try
+        {
+            _tenants = (await TenantService.GetAllAsync()).ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading tenants: {ex.Message}", MudBlazor.Severity.Error);
+        }
+    }
+
+    private async Task LoadUser()
+    {
+        try
+        {
+            var user = await UserService.GetUserByIdAsync(UserId!.Value);
+            if (user == null)
+            {
+                Snackbar.Add("User not found", MudBlazor.Severity.Error);
+                NavigationManager.NavigateTo("/admin/users");
+                return;
+            }
+
+            _model = new UserFormModel
+            {
+                Email = user.Email,
+                DisplayName = user.DisplayName,
+                Role = user.Role,
+                IsActive = user.IsActive,
+                SelectedTenantIds = user.TenantAccess.Select(ta => ta.TenantId).ToHashSet(),
+                SelectedDomains = user.AllowedDomains.ToList()
+            };
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading user: {ex.Message}", MudBlazor.Severity.Error);
+            NavigationManager.NavigateTo("/admin/users");
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task HandleSubmit()
+    {
+        // Validate passwords match for new users
+        if (!_isEditMode && _model.Password != _model.ConfirmPassword)
+        {
+            Snackbar.Add("Passwords do not match", MudBlazor.Severity.Error);
+            return;
+        }
+
+        // Validate domain selection for Domain Admin role
+        if (_model.Role == AppRole.DomainAdmin && !_model.SelectedDomains.Any())
+        {
+            Snackbar.Add("At least one domain must be selected for Domain Admin users", MudBlazor.Severity.Error);
+            return;
+        }
+
+        _isSubmitting = true;
+
+        try
+        {
+            if (_isEditMode)
+            {
+                var updateDto = new UpdateUserDto
+                {
+                    Id = UserId!.Value,
+                    DisplayName = _model.DisplayName.Trim(),
+                    Role = _model.Role,
+                    IsActive = _model.IsActive,
+                    TenantIds = _model.SelectedTenantIds.ToList(),
+                    AllowedDomains = _model.Role == AppRole.DomainAdmin ? _model.SelectedDomains : new List<AssessmentDomain>()
+                };
+
+                await UserService.UpdateUserAsync(updateDto, _currentUserId);
+                Snackbar.Add("User updated successfully", MudBlazor.Severity.Success);
+            }
+            else
+            {
+                var createDto = new CreateUserDto
+                {
+                    Email = _model.Email.Trim(),
+                    DisplayName = _model.DisplayName.Trim(),
+                    Password = _model.Password,
+                    Role = _model.Role,
+                    TenantIds = _model.SelectedTenantIds.ToList(),
+                    AllowedDomains = _model.Role == AppRole.DomainAdmin ? _model.SelectedDomains : new List<AssessmentDomain>()
+                };
+
+                await UserService.CreateUserAsync(createDto);
+                Snackbar.Add("User created successfully", MudBlazor.Severity.Success);
+            }
+
+            NavigationManager.NavigateTo("/admin/users");
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", MudBlazor.Severity.Error);
+        }
+        finally
+        {
+            _isSubmitting = false;
+        }
+    }
+
+    private string GetRoleDisplayName(AppRole role) => role switch
+    {
+        AppRole.SuperAdmin => "Super Admin",
+        AppRole.TenantAdmin => "Tenant Admin",
+        AppRole.DomainAdmin => "Domain Admin",
+        AppRole.Auditor => "Auditor",
+        _ => role.ToString()
+    };
+
+    private string GetRoleDescription(AppRole role) => role switch
+    {
+        AppRole.SuperAdmin => "Full access to all features including user management, tenant management, and system configuration.",
+        AppRole.TenantAdmin => "Can manage assigned tenants, run assessments, and view reports for their tenants.",
+        AppRole.DomainAdmin => "Can access and manage only specific security assessment domains. Select the domains below.",
+        AppRole.Auditor => "Read-only access to view assessments and reports for assigned tenants.",
+        _ => "Unknown role"
+    };
+
+    private string GetDomainDisplayName(AssessmentDomain domain) => domain switch
+    {
+        AssessmentDomain.IdentityAndAccess => "Identity & Access (IAM)",
+        AssessmentDomain.PrivilegedAccess => "Privileged Access / PIM",
+        AssessmentDomain.DeviceEndpoint => "Device & Endpoint",
+        AssessmentDomain.ExchangeEmailSecurity => "Exchange / Email Security",
+        AssessmentDomain.MicrosoftDefender => "Microsoft Defender",
+        AssessmentDomain.DataProtectionCompliance => "Data Protection (DLP)",
+        AssessmentDomain.AuditLogging => "Audit & Logging",
+        AssessmentDomain.AppGovernance => "App Governance",
+        AssessmentDomain.CollaborationSecurity => "Collaboration Security",
+        _ => domain.ToString()
+    };
+
+    private void ToggleDomain(AssessmentDomain domain, bool isChecked)
+    {
+        if (isChecked)
+        {
+            if (!_model.SelectedDomains.Contains(domain))
+            {
+                _model.SelectedDomains.Add(domain);
+            }
+        }
+        else
+        {
+            _model.SelectedDomains.Remove(domain);
+        }
+    }
+
+    private string GetMultiSelectionText(List<string> selectedValues)
+    {
+        if (!selectedValues.Any())
+            return "All Tenants";
+        if (selectedValues.Count == 1)
+            return "1 tenant selected";
+        return $"{selectedValues.Count} tenants selected";
+    }
+
+    private class UserFormModel
+    {
+        [Required(ErrorMessage = "Email is required")]
+        [EmailAddress(ErrorMessage = "Invalid email address")]
+        public string Email { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Display name is required")]
+        [StringLength(100, MinimumLength = 2, ErrorMessage = "Display name must be between 2 and 100 characters")]
+        public string DisplayName { get; set; } = string.Empty;
+
+        public string Password { get; set; } = string.Empty;
+
+        public string ConfirmPassword { get; set; } = string.Empty;
+
+        [Required]
+        public AppRole Role { get; set; } = AppRole.Auditor;
+
+        public bool IsActive { get; set; } = true;
+
+        public IEnumerable<Guid> SelectedTenantIds { get; set; } = new HashSet<Guid>();
+
+        public List<AssessmentDomain> SelectedDomains { get; set; } = new();
+    }
+}

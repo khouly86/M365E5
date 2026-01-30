@@ -17,6 +17,9 @@ public class UnitOfWork : IUnitOfWork
     private IRepository<TenantSettings>? _tenantSettings;
     private IAppUserRepository? _appUsers;
     private IRepository<TenantUserAccess>? _tenantUserAccess;
+    private IRepository<UserDomainAccess>? _userDomainAccess;
+    private ISubscriptionRepository? _subscriptions;
+    private IGovernanceAnalysisRepository? _governanceAnalyses;
 
     public UnitOfWork(ApplicationDbContext context)
     {
@@ -30,6 +33,9 @@ public class UnitOfWork : IUnitOfWork
     public IRepository<TenantSettings> TenantSettings => _tenantSettings ??= new Repository<TenantSettings>(_context);
     public IAppUserRepository AppUsers => _appUsers ??= new AppUserRepository(_context);
     public IRepository<TenantUserAccess> TenantUserAccess => _tenantUserAccess ??= new Repository<TenantUserAccess>(_context);
+    public IRepository<UserDomainAccess> UserDomainAccess => _userDomainAccess ??= new Repository<UserDomainAccess>(_context);
+    public ISubscriptionRepository Subscriptions => _subscriptions ??= new SubscriptionRepository(_context);
+    public IGovernanceAnalysisRepository GovernanceAnalyses => _governanceAnalyses ??= new GovernanceAnalysisRepository(_context);
 
     public async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {

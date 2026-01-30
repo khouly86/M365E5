@@ -1,0 +1,82 @@
+@page "/subscription/success"
+@attribute [Authorize]
+@inject ISubscriptionService SubscriptionService
+@inject NavigationManager NavigationManager
+@inject ISnackbar Snackbar
+
+<PageTitle>Subscription Success - Cloudativ Assessment</PageTitle>
+
+<div class="d-flex flex-column align-center justify-center" style="min-height: 60vh;">
+    <MudPaper Class="pa-8 text-center" Elevation="2" Style="border-radius: 12px; max-width: 500px;">
+        <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" Style="font-size: 80px;" Class="mb-4" />
+
+        <MudText Typo="Typo.h4" Style="font-weight: 600; color: #51627A;" Class="mb-2">
+            Payment Successful!
+        </MudText>
+
+        <MudText Typo="Typo.body1" Color="Color.Secondary" Class="mb-6">
+            Thank you for subscribing to Cloudativ Assessment. Your subscription is now active.
+        </MudText>
+
+        @if (_subscription != null)
+        {
+            <MudPaper Class="pa-4 mb-6" Elevation="0" Style="background: #f5f5f5; border-radius: 8px;">
+                <div class="d-flex justify-space-between mb-2">
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">Plan</MudText>
+                    <MudText Typo="Typo.body2" Style="font-weight: 600;">@GetPlanDisplayName(_subscription.Plan)</MudText>
+                </div>
+                <div class="d-flex justify-space-between mb-2">
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">Status</MudText>
+                    <MudChip Size="Size.Small" Color="Color.Success" Variant="Variant.Filled">
+                        @_subscription.Status
+                    </MudChip>
+                </div>
+                <div class="d-flex justify-space-between">
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">Next Billing Date</MudText>
+                    <MudText Typo="Typo.body2">@_subscription.EndDate.ToString("MMM dd, yyyy")</MudText>
+                </div>
+            </MudPaper>
+        }
+
+        <div class="d-flex gap-4 justify-center">
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary"
+                       OnClick="@(() => NavigationManager.NavigateTo("/subscription"))">
+                View Subscription
+            </MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                       OnClick="@(() => NavigationManager.NavigateTo("/"))">
+                Go to Dashboard
+            </MudButton>
+        </div>
+    </MudPaper>
+</div>
+
+@code {
+    [SupplyParameterFromQuery]
+    public Guid? TenantId { get; set; }
+
+    private SubscriptionDto? _subscription;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (TenantId.HasValue)
+        {
+            try
+            {
+                _subscription = await SubscriptionService.GetByTenantIdAsync(TenantId.Value);
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Error loading subscription: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+
+    private string GetPlanDisplayName(SubscriptionPlan plan) => plan switch
+    {
+        SubscriptionPlan.Trial => "Free Trial",
+        SubscriptionPlan.Monthly => "Monthly",
+        SubscriptionPlan.Yearly => "Yearly",
+        _ => plan.ToString()
+    };
+}

@@ -1,0 +1,128 @@
+@inject IGovernanceService GovernanceService
+
+<div class="report-preview">
+    <div class="d-flex align-center mb-4">
+        <MudIcon Icon="@Icons.Material.Filled.Gavel" Size="Size.Large" Style="color: #7C3AED;" Class="mr-3" />
+        <div>
+            <MudText Typo="Typo.h6">Governance Compliance Report</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                Compliance analysis against regulatory standards
+            </MudText>
+        </div>
+    </div>
+
+    <MudDivider Class="mb-4" />
+
+    @if (_isLoading)
+    {
+        <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+    }
+    else if (_analyses.Any())
+    {
+        <MudText Typo="Typo.subtitle1" Class="mb-3">Compliance Standards</MudText>
+
+        <MudGrid Spacing="2">
+            @foreach (var analysis in _analyses)
+            {
+                <MudItem xs="6" md="4">
+                    <MudPaper Class="pa-3" Elevation="1">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">@analysis.StandardDisplayName</MudText>
+                        <div class="d-flex align-center justify-space-between">
+                            <MudText Typo="Typo.h5" Style="@($"font-weight: 600; color: {GetScoreColor(analysis.ComplianceScore)}")">
+                                @analysis.ComplianceScore%
+                            </MudText>
+                            <MudChip Size="Size.Small" Color="@GetComplianceColor(analysis.ComplianceScore)" Variant="Variant.Filled">
+                                @GetComplianceLabel(analysis.ComplianceScore)
+                            </MudChip>
+                        </div>
+                        <MudProgressLinear Value="@analysis.ComplianceScore" Color="@GetComplianceColorEnum(analysis.ComplianceScore)"
+                                           Size="Size.Small" Class="mt-2" />
+                        <div class="d-flex justify-space-between mt-1">
+                            <MudText Typo="Typo.caption" Style="color: #16A34A;">@analysis.CompliantControls compliant</MudText>
+                            <MudText Typo="Typo.caption" Style="color: #DC2626;">@analysis.NonCompliantControls gaps</MudText>
+                        </div>
+                    </MudPaper>
+                </MudItem>
+            }
+        </MudGrid>
+
+        <MudText Typo="Typo.subtitle2" Class="mt-4 mb-2">Report Includes:</MudText>
+        <MudList T="string" Dense="true">
+            <MudListItem Icon="@Icons.Material.Filled.Check" IconColor="Color.Success">Compliance score per standard</MudListItem>
+            <MudListItem Icon="@Icons.Material.Filled.Check" IconColor="Color.Success">Control-by-control compliance status</MudListItem>
+            <MudListItem Icon="@Icons.Material.Filled.Check" IconColor="Color.Success">Detailed compliance gaps</MudListItem>
+            <MudListItem Icon="@Icons.Material.Filled.Check" IconColor="Color.Success">Prioritized remediation recommendations</MudListItem>
+            <MudListItem Icon="@Icons.Material.Filled.Check" IconColor="Color.Success">Evidence of compliant controls</MudListItem>
+            <MudListItem Icon="@Icons.Material.Filled.Check" IconColor="Color.Success">Standards: NCA CCC, ISO 27001, PCI DSS, HIPAA, NIST CSF</MudListItem>
+        </MudList>
+    }
+    else
+    {
+        <MudAlert Severity="Severity.Info">
+            Select a tenant and governance run to see compliance analysis. Run a governance analysis from the Governance page first.
+        </MudAlert>
+    }
+</div>
+
+@code {
+    [Parameter] public Guid? TenantId { get; set; }
+    [Parameter] public Guid? RunId { get; set; }
+
+    private List<GovernanceAnalysisDto> _analyses = new();
+    private bool _isLoading = false;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await LoadAnalysesAsync();
+    }
+
+    private async Task LoadAnalysesAsync()
+    {
+        if (!RunId.HasValue) return;
+
+        _isLoading = true;
+        try
+        {
+            _analyses = (await GovernanceService.GetAnalysesByRunAsync(RunId.Value)).ToList();
+        }
+        catch
+        {
+            _analyses = new();
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private string GetScoreColor(int score) => score switch
+    {
+        >= 80 => "#16A34A",
+        >= 60 => "#CA8A04",
+        >= 40 => "#EA580C",
+        _ => "#DC2626"
+    };
+
+    private Color GetComplianceColorEnum(int score) => score switch
+    {
+        >= 80 => Color.Success,
+        >= 60 => Color.Warning,
+        _ => Color.Error
+    };
+
+    private Color GetComplianceColor(int score) => score switch
+    {
+        >= 80 => Color.Success,
+        >= 60 => Color.Warning,
+        >= 40 => Color.Error,
+        _ => Color.Error
+    };
+
+    private string GetComplianceLabel(int score) => score switch
+    {
+        >= 80 => "Good",
+        >= 60 => "Fair",
+        >= 40 => "Poor",
+        _ => "Critical"
+    };
+}

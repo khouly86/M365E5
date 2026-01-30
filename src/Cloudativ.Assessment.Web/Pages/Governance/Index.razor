@@ -1,0 +1,498 @@
+@page "/governance"
+@attribute [Authorize]
+@inject ITenantService TenantService
+@inject IAssessmentService AssessmentService
+@inject IGovernanceService GovernanceService
+@inject ISnackbar Snackbar
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JS
+@using Cloudativ.Assessment.Web.Components
+@using static Cloudativ.Assessment.Domain.Enums.ComplianceStandardExtensions
+
+<PageTitle>Governance - Cloudativ Assessment</PageTitle>
+
+<MudText Typo="Typo.h5" Class="mb-4" Style="font-weight: 600; color: #51627A;">
+    <MudIcon Icon="@Icons.Material.Filled.Gavel" Class="mr-2" Style="vertical-align: middle;" />
+    Governance Compliance Analysis
+</MudText>
+
+@if (!_openAiEnabled)
+{
+    <MudAlert Severity="MudBlazor.Severity.Warning" Class="mb-4" Icon="@Icons.Material.Filled.Warning">
+        <MudText Typo="Typo.subtitle1" Style="font-weight: 600;">OpenAI Integration Not Configured</MudText>
+        <MudText Typo="Typo.body2">
+            Governance analysis requires OpenAI to be configured. Please add your OpenAI API key in appsettings.json and set "Enabled" to true.
+        </MudText>
+    </MudAlert>
+}
+
+<MudPaper Class="pa-4 mb-4" Elevation="2" Style="border-radius: 12px;">
+    <MudGrid>
+        @* Tenant Selector *@
+        <MudItem xs="12" md="4">
+            <MudSelect T="Guid?"
+                       Value="_selectedTenantId"
+                       ValueChanged="OnTenantChanged"
+                       Label="Select Tenant"
+                       Variant="Variant.Outlined"
+                       AnchorOrigin="Origin.BottomCenter"
+                       Disabled="@_isLoading">
+                @foreach (var tenant in _tenants)
+                {
+                    <MudSelectItem Value="@((Guid?)tenant.Id)">@tenant.Name (@tenant.Domain)</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+
+        @* Assessment Run Selector *@
+        <MudItem xs="12" md="4">
+            <MudSelect T="Guid?"
+                       Value="_selectedRunId"
+                       ValueChanged="OnRunChanged"
+                       Label="Select Assessment Run"
+                       Variant="Variant.Outlined"
+                       AnchorOrigin="Origin.BottomCenter"
+                       Disabled="@(_isLoading || !_selectedTenantId.HasValue || !_assessmentRuns.Any())">
+                @if (!_assessmentRuns.Any() && _selectedTenantId.HasValue)
+                {
+                    <MudSelectItem Value="@((Guid?)null)" Disabled="true">No completed assessments</MudSelectItem>
+                }
+                @foreach (var run in _assessmentRuns.Where(r => r.Status == AssessmentStatus.Completed))
+                {
+                    <MudSelectItem Value="@((Guid?)run.Id)">
+                        @run.StartedAt.ToString("MMM dd, yyyy HH:mm") - Score: @(run.OverallScore ?? 0)%
+                    </MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+
+        @* Standards Multi-Select *@
+        <MudItem xs="12" md="4">
+            <MudText Typo="Typo.caption" Class="mb-1" Style="color: var(--mud-palette-text-secondary);">
+                Compliance Standards
+            </MudText>
+            <div class="d-flex flex-wrap gap-1">
+                @foreach (var standard in _availableStandards)
+                {
+                    var isSelected = _selectedStandards.Contains(standard.Standard);
+                    <MudChip Color="@(isSelected ? Color.Primary : Color.Default)"
+                             Variant="@(isSelected ? Variant.Filled : Variant.Outlined)"
+                             Size="Size.Small"
+                             OnClick="@(() => ToggleStandard(standard.Standard))"
+                             Style="cursor: pointer;"
+                             Disabled="@(!standard.IsEnabled || _isAnalyzing)"
+                             Title="@(standard.IsEnabled ? standard.Description : "Document not configured")">
+                        @standard.DisplayName
+                        @if (!standard.IsEnabled)
+                        {
+                            <MudIcon Icon="@Icons.Material.Filled.Lock" Size="Size.Small" Class="ml-1" />
+                        }
+                    </MudChip>
+                }
+            </div>
+        </MudItem>
+    </MudGrid>
+
+    <div class="d-flex justify-center mt-4">
+        <MudButton Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   StartIcon="@(_isAnalyzing ? null : Icons.Material.Filled.PlayArrow)"
+                   OnClick="RunAnalysis"
+                   Disabled="@(!CanRunAnalysis)"
+                   Size="Size.Large"
+                   Style="min-width: 250px;">
+            @if (_isAnalyzing)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                <span>Analyzing... (@_currentStandardIndex/@_selectedStandards.Count)</span>
+            }
+            else
+            {
+                <span>Run Compliance Analysis</span>
+            }
+        </MudButton>
+    </div>
+</MudPaper>
+
+@* Results Display *@
+@if (_analysisResults.Any())
+{
+    <MudPaper Class="pa-4" Elevation="2" Style="border-radius: 12px;">
+        @* Summary Cards *@
+        @if (_analysisSummary != null)
+        {
+            <MudGrid Class="mb-4">
+                <MudItem xs="12" md="3">
+                    <MudCard Elevation="0" Style="background: linear-gradient(135deg, #E0FC8E 0%, #c4e67a 100%); border-radius: 12px;">
+                        <MudCardContent Class="text-center pa-4">
+                            <MudText Typo="Typo.h3" Style="font-weight: 700; color: #51627A;">
+                                @_analysisSummary.OverallAverageScore%
+                            </MudText>
+                            <MudText Typo="Typo.body2" Style="color: #51627A;">Average Compliance</MudText>
+                        </MudCardContent>
+                    </MudCard>
+                </MudItem>
+                <MudItem xs="12" md="3">
+                    <MudCard Elevation="0" Style="background: #f5f5f5; border-radius: 12px;">
+                        <MudCardContent Class="text-center pa-4">
+                            <MudText Typo="Typo.h3" Style="font-weight: 700; color: #51627A;">
+                                @_analysisSummary.StandardsAnalyzed
+                            </MudText>
+                            <MudText Typo="Typo.body2" Style="color: var(--mud-palette-text-secondary);">Standards Analyzed</MudText>
+                        </MudCardContent>
+                    </MudCard>
+                </MudItem>
+                <MudItem xs="12" md="3">
+                    <MudCard Elevation="0" Style="background: #fff3e0; border-radius: 12px;">
+                        <MudCardContent Class="text-center pa-4">
+                            <MudText Typo="Typo.h3" Style="font-weight: 700; color: #ef6c00;">
+                                @_analysisSummary.TotalGaps
+                            </MudText>
+                            <MudText Typo="Typo.body2" Style="color: var(--mud-palette-text-secondary);">Compliance Gaps</MudText>
+                        </MudCardContent>
+                    </MudCard>
+                </MudItem>
+                <MudItem xs="12" md="3">
+                    <MudCard Elevation="0" Style="background: #e3f2fd; border-radius: 12px;">
+                        <MudCardContent Class="text-center pa-4">
+                            <MudText Typo="Typo.h3" Style="font-weight: 700; color: #1976d2;">
+                                @_analysisSummary.TotalRecommendations
+                            </MudText>
+                            <MudText Typo="Typo.body2" Style="color: var(--mud-palette-text-secondary);">Recommendations</MudText>
+                        </MudCardContent>
+                    </MudCard>
+                </MudItem>
+            </MudGrid>
+
+            @* Export Buttons *@
+            <div class="d-flex justify-end gap-2 mb-4">
+                <MudButton Variant="Variant.Outlined"
+                           Color="Color.Primary"
+                           StartIcon="@Icons.Material.Filled.PictureAsPdf"
+                           OnClick="ExportToPdf"
+                           Disabled="@_isExporting">
+                    @if (_isExporting && _exportType == "pdf")
+                    {
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                    }
+                    Export PDF
+                </MudButton>
+                <MudButton Variant="Variant.Outlined"
+                           Color="Color.Success"
+                           StartIcon="@Icons.Material.Filled.TableChart"
+                           OnClick="ExportToExcel"
+                           Disabled="@_isExporting">
+                    @if (_isExporting && _exportType == "excel")
+                    {
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                    }
+                    Export Excel
+                </MudButton>
+            </div>
+        }
+
+        @* Tabbed Results by Standard *@
+        <MudTabs Elevation="0" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-4">
+            @foreach (var result in _analysisResults)
+            {
+                <MudTabPanel Text="@result.StandardDisplayName"
+                             BadgeData="@($"{result.ComplianceScore}%")"
+                             BadgeColor="@GetScoreColor(result.ComplianceScore)">
+                    <GovernanceAnalysisResult Analysis="@result" />
+                </MudTabPanel>
+            }
+        </MudTabs>
+    </MudPaper>
+}
+else if (_existingAnalyses.Any())
+{
+    @* Show existing analyses for the selected run *@
+    <MudPaper Class="pa-4" Elevation="2" Style="border-radius: 12px;">
+        <div class="d-flex justify-space-between align-center mb-3">
+            <MudText Typo="Typo.h6" Style="color: #51627A;">Previous Analysis Results</MudText>
+            <div class="d-flex gap-2">
+                <MudButton Variant="Variant.Outlined"
+                           Color="Color.Primary"
+                           Size="Size.Small"
+                           StartIcon="@Icons.Material.Filled.PictureAsPdf"
+                           OnClick="ExportToPdf"
+                           Disabled="@_isExporting">
+                    @if (_isExporting && _exportType == "pdf")
+                    {
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                    }
+                    Export PDF
+                </MudButton>
+                <MudButton Variant="Variant.Outlined"
+                           Color="Color.Success"
+                           Size="Size.Small"
+                           StartIcon="@Icons.Material.Filled.TableChart"
+                           OnClick="ExportToExcel"
+                           Disabled="@_isExporting">
+                    @if (_isExporting && _exportType == "excel")
+                    {
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                    }
+                    Export Excel
+                </MudButton>
+            </div>
+        </div>
+
+        <MudTabs Elevation="0" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-4">
+            @foreach (var result in _existingAnalyses)
+            {
+                <MudTabPanel Text="@result.StandardDisplayName"
+                             BadgeData="@($"{result.ComplianceScore}%")"
+                             BadgeColor="@GetScoreColor(result.ComplianceScore)">
+                    <GovernanceAnalysisResult Analysis="@result" />
+                </MudTabPanel>
+            }
+        </MudTabs>
+    </MudPaper>
+}
+else if (_selectedRunId.HasValue && !_isLoading)
+{
+    <MudAlert Severity="Severity.Info" Class="mt-4">
+        <MudText Typo="Typo.body1">
+            No governance analysis found for this assessment run. Select compliance standards above and click "Run Compliance Analysis" to get started.
+        </MudText>
+    </MudAlert>
+}
+
+@code {
+    private bool _isLoading = true;
+    private bool _isAnalyzing = false;
+    private bool _isExporting = false;
+    private string _exportType = "";
+    private bool _openAiEnabled = false;
+    private int _currentStandardIndex = 0;
+
+    private List<TenantDto> _tenants = new();
+    private List<AssessmentRunDto> _assessmentRuns = new();
+    private List<ComplianceStandardInfoDto> _availableStandards = new();
+    private HashSet<ComplianceStandard> _selectedStandards = new();
+
+    private Guid? _selectedTenantId;
+    private Guid? _selectedRunId;
+
+    private List<GovernanceAnalysisDto> _analysisResults = new();
+    private List<GovernanceAnalysisDto> _existingAnalyses = new();
+    private GovernanceAnalysisSummaryDto? _analysisSummary;
+
+    private bool CanRunAnalysis =>
+        _openAiEnabled &&
+        _selectedTenantId.HasValue &&
+        _selectedRunId.HasValue &&
+        _selectedStandards.Any() &&
+        !_isAnalyzing;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadInitialData();
+    }
+
+    private async Task LoadInitialData()
+    {
+        _isLoading = true;
+
+        try
+        {
+            _openAiEnabled = await GovernanceService.IsOpenAiEnabledAsync();
+            _tenants = (await TenantService.GetAllAsync()).ToList();
+            _availableStandards = (await GovernanceService.GetAvailableStandardsAsync()).ToList();
+
+            // Pre-select enabled standards
+            foreach (var std in _availableStandards.Where(s => s.IsEnabled))
+            {
+                _selectedStandards.Add(std.Standard);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading data: {ex.Message}", MudBlazor.Severity.Error);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task OnTenantChanged(Guid? tenantId)
+    {
+        _selectedTenantId = tenantId;
+        _selectedRunId = null;
+        _assessmentRuns.Clear();
+        _analysisResults.Clear();
+        _existingAnalyses.Clear();
+        _analysisSummary = null;
+
+        if (tenantId.HasValue)
+        {
+            try
+            {
+                _assessmentRuns = (await AssessmentService.GetRunsByTenantAsync(tenantId.Value)).ToList();
+
+                // Update recommended standards based on tenant's industry
+                var tenant = _tenants.FirstOrDefault(t => t.Id == tenantId);
+                if (tenant != null)
+                {
+                    var recommended = await GovernanceService.GetRecommendedStandardsForIndustryAsync(tenant.Industry);
+                    _availableStandards = recommended.ToList();
+
+                    // Update selection to include recommended
+                    _selectedStandards.Clear();
+                    foreach (var std in recommended.Where(s => s.IsEnabled && s.IsRecommended))
+                    {
+                        _selectedStandards.Add(std.Standard);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Error loading assessment runs: {ex.Message}", Severity.Error);
+            }
+        }
+
+        StateHasChanged();
+    }
+
+    private async Task OnRunChanged(Guid? runId)
+    {
+        _selectedRunId = runId;
+        _analysisResults.Clear();
+        _existingAnalyses.Clear();
+        _analysisSummary = null;
+
+        if (runId.HasValue)
+        {
+            try
+            {
+                _existingAnalyses = (await GovernanceService.GetAnalysesByRunAsync(runId.Value)).ToList();
+                if (_existingAnalyses.Any())
+                {
+                    _analysisSummary = await GovernanceService.GetAnalysisSummaryAsync(runId.Value);
+                }
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Error loading existing analyses: {ex.Message}", Severity.Error);
+            }
+        }
+
+        StateHasChanged();
+    }
+
+    private void ToggleStandard(ComplianceStandard standard)
+    {
+        if (_selectedStandards.Contains(standard))
+        {
+            _selectedStandards.Remove(standard);
+        }
+        else
+        {
+            _selectedStandards.Add(standard);
+        }
+    }
+
+    private async Task RunAnalysis()
+    {
+        if (!CanRunAnalysis) return;
+
+        _isAnalyzing = true;
+        _analysisResults.Clear();
+        _currentStandardIndex = 0;
+
+        try
+        {
+            var standards = _selectedStandards.ToList();
+
+            foreach (var standard in standards)
+            {
+                _currentStandardIndex++;
+                StateHasChanged();
+
+                var result = await GovernanceService.RunAnalysisAsync(
+                    _selectedTenantId!.Value,
+                    _selectedRunId!.Value,
+                    standard);
+
+                _analysisResults.Add(result);
+
+                if (!result.IsSuccessful)
+                {
+                    Snackbar.Add($"Analysis failed for {standard.GetDisplayName()}: {result.ErrorMessage}", Severity.Warning);
+                }
+            }
+
+            // Get updated summary
+            _analysisSummary = await GovernanceService.GetAnalysisSummaryAsync(_selectedRunId!.Value);
+
+            Snackbar.Add($"Completed analysis for {_analysisResults.Count(r => r.IsSuccessful)} standard(s)", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error running analysis: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isAnalyzing = false;
+        }
+    }
+
+    private static Color GetScoreColor(int score) => score switch
+    {
+        >= 80 => Color.Success,
+        >= 60 => Color.Warning,
+        _ => Color.Error
+    };
+
+    private async Task ExportToPdf()
+    {
+        if (!_selectedTenantId.HasValue || !_selectedRunId.HasValue) return;
+
+        _isExporting = true;
+        _exportType = "pdf";
+        StateHasChanged();
+
+        try
+        {
+            var url = $"/api/GovernanceExport/pdf/{_selectedTenantId.Value}/{_selectedRunId.Value}";
+            await JS.InvokeVoidAsync("open", url, "_blank");
+            Snackbar.Add("PDF export started", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error exporting PDF: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isExporting = false;
+            _exportType = "";
+        }
+    }
+
+    private async Task ExportToExcel()
+    {
+        if (!_selectedTenantId.HasValue || !_selectedRunId.HasValue) return;
+
+        _isExporting = true;
+        _exportType = "excel";
+        StateHasChanged();
+
+        try
+        {
+            var url = $"/api/GovernanceExport/excel/{_selectedTenantId.Value}/{_selectedRunId.Value}";
+            await JS.InvokeVoidAsync("open", url, "_blank");
+            Snackbar.Add("Excel export started", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error exporting Excel: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isExporting = false;
+            _exportType = "";
+        }
+    }
+}

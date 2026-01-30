@@ -1,0 +1,332 @@
+@page "/tenants/{TenantId:guid}/onboarding"
+@attribute [Authorize]
+@inject ITenantService TenantService
+@inject NavigationManager NavigationManager
+@inject ISnackbar Snackbar
+
+<PageTitle>Configure Tenant - Cloudativ Assessment</PageTitle>
+
+<div class="d-flex align-center mb-4">
+    <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" OnClick="@(() => NavigationManager.NavigateTo($"/tenants/{TenantId}"))" />
+    <MudText Typo="Typo.h5" Style="font-weight: 600; color: #51627A;">Configure Tenant Connection</MudText>
+</div>
+
+@if (_isLoading)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+}
+else if (_tenant == null)
+{
+    <MudAlert Severity="Severity.Error">Tenant not found.</MudAlert>
+}
+else
+{
+    <MudGrid>
+        <!-- Tenant Info Card -->
+        <MudItem xs="12" md="4">
+            <MudPaper Class="pa-4" Elevation="2" Style="border-radius: 12px;">
+                <div class="d-flex align-center mb-4">
+                    <MudAvatar Size="Size.Large" Style="background: #E0FC8E; color: #51627A;">
+                        @_tenant.Name[0]
+                    </MudAvatar>
+                    <div class="ml-3">
+                        <MudText Typo="Typo.h6">@_tenant.Name</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">@_tenant.Domain</MudText>
+                    </div>
+                </div>
+
+                <MudDivider Class="mb-4" />
+
+                <div class="mb-3">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Status</MudText>
+                    <MudChip Size="Size.Small" Color="@GetStatusColor(_tenant.OnboardingStatus)" Variant="Variant.Filled">
+                        @_tenant.OnboardingStatus
+                    </MudChip>
+                </div>
+
+                @if (_tenant.AzureTenantId.HasValue)
+                {
+                    <div class="mb-3">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Azure Tenant ID</MudText>
+                        <MudText Typo="Typo.body2" Style="word-break: break-all;">@_tenant.AzureTenantId</MudText>
+                    </div>
+                }
+
+                <MudDivider Class="my-4" />
+
+                <MudText Typo="Typo.subtitle2" Class="mb-2">Onboarding Steps</MudText>
+                <MudList Dense="true">
+                    <MudListItem Icon="@GetStepIcon(1)" IconColor="@GetStepIconColor(1)">
+                        Create Azure AD App
+                    </MudListItem>
+                    <MudListItem Icon="@GetStepIcon(2)" IconColor="@GetStepIconColor(2)">
+                        Enter Credentials
+                    </MudListItem>
+                    <MudListItem Icon="@GetStepIcon(3)" IconColor="@GetStepIconColor(3)">
+                        Validate Connection
+                    </MudListItem>
+                    <MudListItem Icon="@GetStepIcon(4)" IconColor="@GetStepIconColor(4)">
+                        Grant Permissions
+                    </MudListItem>
+                </MudList>
+            </MudPaper>
+        </MudItem>
+
+        <!-- Configuration Form -->
+        <MudItem xs="12" md="8">
+            <MudPaper Class="pa-6" Elevation="2" Style="border-radius: 12px;">
+                <MudText Typo="Typo.h6" Class="mb-2" Style="color: #51627A;">Azure AD App Registration</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+                    Enter the credentials from your Azure AD app registration to enable Microsoft 365 security assessments.
+                </MudText>
+
+                <MudAlert Severity="Severity.Info" Class="mb-4" Dense="true">
+                    <strong>Required Permissions:</strong> The app needs read-only access to Microsoft Graph APIs including
+                    Directory, Policy, Security, and Reports data.
+                    <MudLink Href="https://docs.microsoft.com/graph/permissions-reference" Target="_blank" Class="ml-2">
+                        Learn more
+                    </MudLink>
+                </MudAlert>
+
+                <MudTextField @bind-Value="_clientId"
+                              Label="Application (Client) ID"
+                              Variant="Variant.Outlined"
+                              Placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                              HelperText="Found in Azure Portal > App registrations > Your app > Overview"
+                              Class="mb-4" />
+
+                <MudTextField @bind-Value="_clientSecret"
+                              Label="Client Secret"
+                              Variant="Variant.Outlined"
+                              InputType="@(_showSecret ? InputType.Text : InputType.Password)"
+                              Adornment="Adornment.End"
+                              AdornmentIcon="@(_showSecret ? Icons.Material.Filled.Visibility : Icons.Material.Filled.VisibilityOff)"
+                              OnAdornmentClick="@(() => _showSecret = !_showSecret)"
+                              HelperText="Found in Azure Portal > App registrations > Your app > Certificates & secrets"
+                              Class="mb-4" />
+
+                @if (_validationResult != null)
+                {
+                    <MudAlert Severity="@(_validationResult.ConnectionValid ? Severity.Success : Severity.Error)" Class="mb-4">
+                        @_validationResult.ValidationMessage
+                    </MudAlert>
+
+                    @if (_validationResult.MissingPermissions.Any())
+                    {
+                        <MudAlert Severity="Severity.Warning" Class="mb-4">
+                            <MudText Typo="Typo.subtitle2">Missing Permissions:</MudText>
+                            <ul class="mt-2 mb-0">
+                                @foreach (var perm in _validationResult.MissingPermissions.Take(10))
+                                {
+                                    <li>@perm</li>
+                                }
+                                @if (_validationResult.MissingPermissions.Count > 10)
+                                {
+                                    <li>... and @(_validationResult.MissingPermissions.Count - 10) more</li>
+                                }
+                            </ul>
+                        </MudAlert>
+                    }
+
+                    @if (_validationResult.GrantedPermissions.Any())
+                    {
+                        <MudExpansionPanels Class="mb-4">
+                            <MudExpansionPanel Text="@($"Granted Permissions ({_validationResult.GrantedPermissions.Count})")">
+                                <div class="d-flex flex-wrap gap-1">
+                                    @foreach (var perm in _validationResult.GrantedPermissions)
+                                    {
+                                        <MudChip Size="Size.Small" Color="Color.Success" Variant="Variant.Outlined">@perm</MudChip>
+                                    }
+                                </div>
+                            </MudExpansionPanel>
+                        </MudExpansionPanels>
+                    }
+                }
+
+                <div class="d-flex justify-space-between">
+                    <MudButton Variant="Variant.Outlined"
+                               Color="Color.Primary"
+                               Disabled="@(_isValidating || string.IsNullOrWhiteSpace(_clientId) || string.IsNullOrWhiteSpace(_clientSecret))"
+                               OnClick="ValidateConnection"
+                               StartIcon="@(_isValidating ? null : Icons.Material.Filled.Check)">
+                        @if (_isValidating)
+                        {
+                            <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                            <span>Validating...</span>
+                        }
+                        else
+                        {
+                            <span>Validate Connection</span>
+                        }
+                    </MudButton>
+
+                    <MudButton Variant="Variant.Filled"
+                               Color="Color.Primary"
+                               Disabled="@(_isSaving || _validationResult == null || !_validationResult.ConnectionValid)"
+                               OnClick="CompleteOnboarding"
+                               StartIcon="@(_isSaving ? null : Icons.Material.Filled.Save)">
+                        @if (_isSaving)
+                        {
+                            <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                            <span>Saving...</span>
+                        }
+                        else
+                        {
+                            <span>Save & Complete</span>
+                        }
+                    </MudButton>
+                </div>
+            </MudPaper>
+
+            <!-- Help Section -->
+            <MudPaper Class="pa-4 mt-4" Elevation="1" Style="border-radius: 12px; background: #f5f7fa;">
+                <MudText Typo="Typo.subtitle2" Class="mb-2">
+                    <MudIcon Icon="@Icons.Material.Filled.Help" Size="Size.Small" Class="mr-1" />
+                    How to create an Azure AD App Registration
+                </MudText>
+                <ol class="mb-0" style="padding-left: 20px;">
+                    <li>Go to <MudLink Href="https://portal.azure.com/#blade/Microsoft_AAD_RegisteredApps/ApplicationsListBlade" Target="_blank">Azure Portal > App registrations</MudLink></li>
+                    <li>Click "New registration" and enter a name (e.g., "Cloudativ Assessment")</li>
+                    <li>Select "Accounts in this organizational directory only"</li>
+                    <li>Click "Register" and copy the Application (Client) ID</li>
+                    <li>Go to "Certificates & secrets" > "New client secret"</li>
+                    <li>Copy the secret value (you won't be able to see it again)</li>
+                    <li>Go to "API permissions" > "Add a permission" > "Microsoft Graph"</li>
+                    <li>Add the required Application permissions and grant admin consent</li>
+                </ol>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    [Parameter]
+    public Guid TenantId { get; set; }
+
+    private bool _isLoading = true;
+    private bool _isValidating = false;
+    private bool _isSaving = false;
+    private bool _showSecret = false;
+
+    private TenantDto? _tenant;
+    private string _clientId = string.Empty;
+    private string _clientSecret = string.Empty;
+    private TenantOnboardingDto? _validationResult;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadTenantAsync();
+    }
+
+    private async Task LoadTenantAsync()
+    {
+        _isLoading = true;
+        try
+        {
+            _tenant = await TenantService.GetByIdAsync(TenantId);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading tenant: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task ValidateConnection()
+    {
+        if (string.IsNullOrWhiteSpace(_clientId) || string.IsNullOrWhiteSpace(_clientSecret))
+        {
+            Snackbar.Add("Please enter both Client ID and Client Secret", Severity.Warning);
+            return;
+        }
+
+        _isValidating = true;
+        _validationResult = null;
+
+        try
+        {
+            _validationResult = await TenantService.ValidateConnectionAsync(TenantId, _clientId.Trim(), _clientSecret.Trim());
+
+            if (_validationResult.ConnectionValid)
+            {
+                Snackbar.Add("Connection validated successfully!", Severity.Success);
+            }
+            else
+            {
+                Snackbar.Add("Connection validation failed. Please check your credentials.", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error validating connection: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isValidating = false;
+        }
+    }
+
+    private async Task CompleteOnboarding()
+    {
+        if (_validationResult == null || !_validationResult.ConnectionValid)
+        {
+            Snackbar.Add("Please validate the connection first", Severity.Warning);
+            return;
+        }
+
+        _isSaving = true;
+        try
+        {
+            await TenantService.CompleteOnboardingAsync(TenantId, _clientId.Trim(), _clientSecret.Trim());
+            Snackbar.Add("Tenant configuration saved successfully!", Severity.Success);
+            NavigationManager.NavigateTo($"/tenants/{TenantId}");
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error saving configuration: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private Color GetStatusColor(OnboardingStatus status) => status switch
+    {
+        OnboardingStatus.Active => Color.Success,
+        OnboardingStatus.Validated => Color.Info,
+        OnboardingStatus.PermissionsGranted => Color.Info,
+        OnboardingStatus.InProgress => Color.Warning,
+        OnboardingStatus.Pending => Color.Default,
+        _ => Color.Error
+    };
+
+    private int GetCurrentStep() => _tenant?.OnboardingStatus switch
+    {
+        OnboardingStatus.Pending => 1,
+        OnboardingStatus.InProgress => 2,
+        OnboardingStatus.Validated => 3,
+        OnboardingStatus.PermissionsGranted => 3,
+        OnboardingStatus.Active => 4,
+        _ => 1
+    };
+
+    private string GetStepIcon(int step)
+    {
+        var currentStep = GetCurrentStep();
+        if (step < currentStep) return Icons.Material.Filled.CheckCircle;
+        if (step == currentStep) return Icons.Material.Filled.RadioButtonChecked;
+        return Icons.Material.Filled.RadioButtonUnchecked;
+    }
+
+    private Color GetStepIconColor(int step)
+    {
+        var currentStep = GetCurrentStep();
+        if (step < currentStep) return Color.Success;
+        if (step == currentStep) return Color.Primary;
+        return Color.Default;
+    }
+}

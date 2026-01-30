@@ -28,6 +28,7 @@ public interface ITenantRepository : IRepository<Tenant>
 public interface IAssessmentRunRepository : IRepository<AssessmentRun>
 {
     Task<AssessmentRun?> GetLatestByTenantAsync(Guid tenantId, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<AssessmentRun>> GetAllAsync(int take, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<AssessmentRun>> GetByTenantAsync(Guid tenantId, int take = 10, CancellationToken cancellationToken = default);
     Task<AssessmentRun?> GetWithFindingsAsync(Guid id, CancellationToken cancellationToken = default);
 }
@@ -42,6 +43,24 @@ public interface IAppUserRepository : IRepository<AppUser>
 {
     Task<AppUser?> GetByEmailAsync(string email, CancellationToken cancellationToken = default);
     Task<AppUser?> GetWithTenantAccessAsync(Guid id, CancellationToken cancellationToken = default);
+    Task<AppUser?> GetWithAllAccessAsync(Guid id, CancellationToken cancellationToken = default);
+}
+
+public interface ISubscriptionRepository : IRepository<Subscription>
+{
+    Task<Subscription?> GetByTenantIdAsync(Guid tenantId, CancellationToken cancellationToken = default);
+    Task<Subscription?> GetByStripeCustomerIdAsync(string stripeCustomerId, CancellationToken cancellationToken = default);
+    Task<Subscription?> GetByStripeSubscriptionIdAsync(string stripeSubscriptionId, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<Subscription>> GetExpiredSubscriptionsAsync(CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<Subscription>> GetSubscriptionsNeedingResetAsync(DateTime periodStart, CancellationToken cancellationToken = default);
+}
+
+public interface IGovernanceAnalysisRepository : IRepository<GovernanceAnalysis>
+{
+    Task<IReadOnlyList<GovernanceAnalysis>> GetByAssessmentRunIdAsync(Guid assessmentRunId, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<GovernanceAnalysis>> GetByTenantIdAsync(Guid tenantId, int take = 50, CancellationToken cancellationToken = default);
+    Task<GovernanceAnalysis?> GetByRunAndStandardAsync(Guid assessmentRunId, Enums.ComplianceStandard standard, CancellationToken cancellationToken = default);
+    Task<GovernanceAnalysis?> GetLatestByTenantAndStandardAsync(Guid tenantId, Enums.ComplianceStandard standard, CancellationToken cancellationToken = default);
 }
 
 public interface IUnitOfWork : IDisposable
@@ -53,6 +72,9 @@ public interface IUnitOfWork : IDisposable
     IRepository<TenantSettings> TenantSettings { get; }
     IAppUserRepository AppUsers { get; }
     IRepository<TenantUserAccess> TenantUserAccess { get; }
+    IRepository<UserDomainAccess> UserDomainAccess { get; }
+    ISubscriptionRepository Subscriptions { get; }
+    IGovernanceAnalysisRepository GovernanceAnalyses { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
     Task BeginTransactionAsync(CancellationToken cancellationToken = default);

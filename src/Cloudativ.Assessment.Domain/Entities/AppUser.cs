@@ -18,6 +18,9 @@ public class AppUser : BaseEntity
 
     // For multi-tenant access control
     public virtual ICollection<TenantUserAccess> TenantAccess { get; set; } = new List<TenantUserAccess>();
+
+    // For domain-level admin access control
+    public virtual ICollection<UserDomainAccess> DomainAccess { get; set; } = new List<UserDomainAccess>();
 }
 
 public class TenantUserAccess : BaseEntity
@@ -30,4 +33,16 @@ public class TenantUserAccess : BaseEntity
     // Navigation properties
     public virtual AppUser AppUser { get; set; } = null!;
     public virtual Tenant Tenant { get; set; } = null!;
+}
+
+/// <summary>
+/// Stores which assessment domains a Domain-level admin user has access to
+/// </summary>
+public class UserDomainAccess : BaseEntity
+{
+    public Guid AppUserId { get; set; }
+    public AssessmentDomain Domain { get; set; }
+
+    // Navigation property
+    public virtual AppUser AppUser { get; set; } = null!;
 }

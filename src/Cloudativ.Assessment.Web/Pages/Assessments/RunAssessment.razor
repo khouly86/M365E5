@@ -1,0 +1,381 @@
+@page "/assessments/new"
+@attribute [Authorize]
+@using Cloudativ.Assessment.Web.Services
+@inject AssessmentHubService AssessmentHubService
+@inject ITenantService TenantService
+@inject AuthenticationStateService AuthService
+@inject NavigationManager NavigationManager
+@inject ISnackbar Snackbar
+
+<PageTitle>Run Assessment - Cloudativ Assessment</PageTitle>
+
+<div class="d-flex align-center mb-4">
+    <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" OnClick="@(() => NavigationManager.NavigateTo("/assessments"))" />
+    <MudText Typo="Typo.h5" Style="font-weight: 600; color: #51627A;">Run New Assessment</MudText>
+</div>
+
+@if (_isLoading)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+}
+else if (_tenants.Count == 0)
+{
+    <MudPaper Class="pa-6" Elevation="2" Style="border-radius: 12px;">
+        <div class="text-center">
+            <MudIcon Icon="@Icons.Material.Filled.Business" Size="Size.Large" Color="Color.Secondary" Class="mb-4" />
+            <MudText Typo="Typo.h6" Class="mb-2">No Tenants Available</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+                You need to add a tenant before running an assessment.
+            </MudText>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="/tenants/new">
+                Add Tenant
+            </MudButton>
+        </div>
+    </MudPaper>
+}
+else
+{
+    <MudGrid>
+        <!-- Step Indicator -->
+        <MudItem xs="12">
+            <MudPaper Class="pa-4 mb-4" Elevation="1" Style="border-radius: 12px;">
+                <div class="d-flex justify-center align-center gap-4">
+                    <div class="d-flex align-center">
+                        <MudAvatar Size="Size.Small" Style="@GetStepStyle(1)">1</MudAvatar>
+                        <MudText Class="ml-2" Style="@GetStepTextStyle(1)">Select Tenant</MudText>
+                    </div>
+                    <MudIcon Icon="@Icons.Material.Filled.ArrowForward" Color="Color.Default" />
+                    <div class="d-flex align-center">
+                        <MudAvatar Size="Size.Small" Style="@GetStepStyle(2)">2</MudAvatar>
+                        <MudText Class="ml-2" Style="@GetStepTextStyle(2)">Select Domains</MudText>
+                    </div>
+                    <MudIcon Icon="@Icons.Material.Filled.ArrowForward" Color="Color.Default" />
+                    <div class="d-flex align-center">
+                        <MudAvatar Size="Size.Small" Style="@GetStepStyle(3)">3</MudAvatar>
+                        <MudText Class="ml-2" Style="@GetStepTextStyle(3)">Review & Start</MudText>
+                    </div>
+                </div>
+            </MudPaper>
+        </MudItem>
+
+        <!-- Step Content -->
+        <MudItem xs="12">
+            @if (_currentStep == 1)
+            {
+                <!-- Step 1: Select Tenant -->
+                <MudPaper Class="pa-6" Elevation="2" Style="border-radius: 12px;">
+                    <MudText Typo="Typo.h6" Class="mb-4" Style="color: #51627A;">Select Tenant</MudText>
+                    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+                        Choose the Microsoft 365 tenant you want to assess:
+                    </MudText>
+
+                    <MudRadioGroup @bind-Value="_selectedTenantId">
+                        @foreach (var tenant in _tenants)
+                        {
+                            <MudPaper Class="pa-3 mb-2" Elevation="1" Style="border-radius: 8px; cursor: pointer;">
+                                <MudRadio Value="@tenant.Id" Color="Color.Primary" Dense="true">
+                                    <div class="d-flex align-center" style="width: 100%;">
+                                        <MudAvatar Size="Size.Medium" Style="background: #E0FC8E; color: #51627A;" Class="mr-3">
+                                            @tenant.Name[0]
+                                        </MudAvatar>
+                                        <div style="flex-grow: 1;">
+                                            <MudText Typo="Typo.subtitle1" Style="font-weight: 500;">@tenant.Name</MudText>
+                                            <MudText Typo="Typo.caption" Color="Color.Secondary">@tenant.Domain</MudText>
+                                        </div>
+                                        <MudChip Size="Size.Small" Color="@GetStatusColor(tenant.OnboardingStatus)" Variant="Variant.Filled">
+                                            @tenant.OnboardingStatus
+                                        </MudChip>
+                                    </div>
+                                </MudRadio>
+                            </MudPaper>
+                        }
+                    </MudRadioGroup>
+
+                    @if (_selectedTenantId != Guid.Empty)
+                    {
+                        var selectedTenant = _tenants.FirstOrDefault(t => t.Id == _selectedTenantId);
+                        if (selectedTenant?.OnboardingStatus != OnboardingStatus.Active)
+                        {
+                            <MudAlert Severity="Severity.Warning" Class="mt-4">
+                                This tenant is not fully configured. Please complete the onboarding process first.
+                                <MudButton Variant="Variant.Text" Color="Color.Warning" Size="Size.Small"
+                                           Href="@($"/tenants/{_selectedTenantId}/onboarding")">
+                                    Configure Now
+                                </MudButton>
+                            </MudAlert>
+                        }
+                    }
+
+                    <div class="d-flex justify-end mt-4">
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                                   Disabled="@(_selectedTenantId == Guid.Empty)"
+                                   OnClick="@(() => _currentStep = 2)"
+                                   EndIcon="@Icons.Material.Filled.ArrowForward">
+                            Next
+                        </MudButton>
+                    </div>
+                </MudPaper>
+            }
+            else if (_currentStep == 2)
+            {
+                <!-- Step 2: Select Domains -->
+                <MudPaper Class="pa-6" Elevation="2" Style="border-radius: 12px;">
+                    <div class="d-flex justify-space-between align-center mb-4">
+                        <div>
+                            <MudText Typo="Typo.h6" Style="color: #51627A;">Select Security Domains</MudText>
+                            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                                Choose the domains to include in this assessment
+                            </MudText>
+                        </div>
+                        <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="ToggleAllDomains">
+                            @(_selectedDomains.Count == _allDomains.Count ? "Deselect All" : "Select All")
+                        </MudButton>
+                    </div>
+
+                    <MudGrid>
+                        @foreach (var domain in _allDomains)
+                        {
+                            <MudItem xs="12" md="6">
+                                <MudPaper Class="pa-3" Elevation="1" Style="@GetDomainCardStyle(domain)">
+                                    <div class="d-flex align-center">
+                                        <MudCheckBox @bind-Value="@_domainSelections[domain]"
+                                                     Color="Color.Primary"
+                                                     Dense="true" />
+                                        <div class="ml-2">
+                                            <MudText Typo="Typo.subtitle2">@GetDomainDisplayName(domain)</MudText>
+                                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                                @GetDomainDescription(domain)
+                                            </MudText>
+                                        </div>
+                                    </div>
+                                </MudPaper>
+                            </MudItem>
+                        }
+                    </MudGrid>
+
+                    @if (_selectedDomains.Count == 0)
+                    {
+                        <MudAlert Severity="Severity.Info" Class="mt-4">
+                            Please select at least one domain to assess.
+                        </MudAlert>
+                    }
+
+                    <div class="d-flex justify-space-between mt-4">
+                        <MudButton Variant="Variant.Text" OnClick="@(() => _currentStep = 1)"
+                                   StartIcon="@Icons.Material.Filled.ArrowBack">
+                            Back
+                        </MudButton>
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                                   Disabled="@(_selectedDomains.Count == 0)"
+                                   OnClick="@(() => _currentStep = 3)"
+                                   EndIcon="@Icons.Material.Filled.ArrowForward">
+                            Next
+                        </MudButton>
+                    </div>
+                </MudPaper>
+            }
+            else if (_currentStep == 3)
+            {
+                <!-- Step 3: Review & Start -->
+                <MudPaper Class="pa-6" Elevation="2" Style="border-radius: 12px;">
+                    <MudText Typo="Typo.h6" Class="mb-4" Style="color: #51627A;">Review & Start Assessment</MudText>
+
+                    <MudSimpleTable Dense="true" Hover="true" Bordered="true" Class="mb-4">
+                        <tbody>
+                            <tr>
+                                <td style="width: 200px; background: #f5f5f5;"><strong>Tenant</strong></td>
+                                <td>@(_tenants.FirstOrDefault(t => t.Id == _selectedTenantId)?.Name ?? "N/A")</td>
+                            </tr>
+                            <tr>
+                                <td style="background: #f5f5f5;"><strong>Domain</strong></td>
+                                <td>@(_tenants.FirstOrDefault(t => t.Id == _selectedTenantId)?.Domain ?? "N/A")</td>
+                            </tr>
+                            <tr>
+                                <td style="background: #f5f5f5;"><strong>Domains to Assess</strong></td>
+                                <td>@_selectedDomains.Count of @_allDomains.Count selected</td>
+                            </tr>
+                        </tbody>
+                    </MudSimpleTable>
+
+                    <MudText Typo="Typo.subtitle2" Class="mb-2">Selected Domains:</MudText>
+                    <div class="d-flex flex-wrap gap-2 mb-4">
+                        @foreach (var domain in _selectedDomains)
+                        {
+                            <MudChip Size="Size.Small" Color="Color.Primary" Variant="Variant.Outlined">
+                                @GetDomainDisplayName(domain)
+                            </MudChip>
+                        }
+                    </div>
+
+                    <MudAlert Severity="Severity.Info" Dense="true" Class="mb-4">
+                        The assessment will collect data from Microsoft Graph API and analyze your security configuration.
+                        This process typically takes 2-5 minutes depending on the number of domains selected.
+                    </MudAlert>
+
+                    <div class="d-flex justify-space-between">
+                        <MudButton Variant="Variant.Text" OnClick="@(() => _currentStep = 2)"
+                                   StartIcon="@Icons.Material.Filled.ArrowBack">
+                            Back
+                        </MudButton>
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                                   Disabled="@_isSubmitting"
+                                   OnClick="StartAssessment"
+                                   StartIcon="@(_isSubmitting ? null : Icons.Material.Filled.PlayArrow)">
+                            @if (_isSubmitting)
+                            {
+                                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                                <span>Starting Assessment...</span>
+                            }
+                            else
+                            {
+                                <span>Start Assessment</span>
+                            }
+                        </MudButton>
+                    </div>
+                </MudPaper>
+            }
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    [Parameter]
+    [SupplyParameterFromQuery(Name = "tenantId")]
+    public string? TenantIdParam { get; set; }
+
+    private int _currentStep = 1;
+    private bool _isLoading = true;
+    private bool _isSubmitting = false;
+    private List<TenantDto> _tenants = new();
+    private Guid _selectedTenantId = Guid.Empty;
+
+    private List<AssessmentDomain> _allDomains = Enum.GetValues<AssessmentDomain>().ToList();
+    private Dictionary<AssessmentDomain, bool> _domainSelections = new();
+
+    private List<AssessmentDomain> _selectedDomains =>
+        _domainSelections.Where(kvp => kvp.Value).Select(kvp => kvp.Key).ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        foreach (var domain in _allDomains)
+        {
+            _domainSelections[domain] = true;
+        }
+
+        await LoadTenantsAsync();
+
+        if (!string.IsNullOrEmpty(TenantIdParam) && Guid.TryParse(TenantIdParam, out var tenantId))
+        {
+            if (_tenants.Any(t => t.Id == tenantId))
+            {
+                _selectedTenantId = tenantId;
+            }
+        }
+    }
+
+    private async Task LoadTenantsAsync()
+    {
+        _isLoading = true;
+        try
+        {
+            _tenants = (await TenantService.GetAllAsync()).ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading tenants: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private void ToggleAllDomains()
+    {
+        var newValue = _selectedDomains.Count != _allDomains.Count;
+        foreach (var domain in _allDomains)
+        {
+            _domainSelections[domain] = newValue;
+        }
+    }
+
+    private async Task StartAssessment()
+    {
+        _isSubmitting = true;
+        try
+        {
+            var currentUser = await AuthService.GetCurrentUserAsync();
+
+            var request = new StartAssessmentRequest
+            {
+                TenantId = _selectedTenantId,
+                DomainsToAssess = _selectedDomains,
+                InitiatedBy = currentUser?.DisplayName ?? "Unknown"
+            };
+
+            var runId = await AssessmentHubService.StartAssessmentAsync(request);
+
+            Snackbar.Add("Assessment started successfully!", Severity.Success);
+            NavigationManager.NavigateTo($"/assessments/{runId}");
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error starting assessment: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isSubmitting = false;
+        }
+    }
+
+    private string GetStepStyle(int step) =>
+        _currentStep >= step
+            ? "background: #51627A; color: white;"
+            : "background: #e0e0e0; color: #666;";
+
+    private string GetStepTextStyle(int step) =>
+        _currentStep >= step
+            ? "font-weight: 500; color: #51627A;"
+            : "color: #999;";
+
+    private string GetDomainDisplayName(AssessmentDomain domain) => domain switch
+    {
+        AssessmentDomain.IdentityAndAccess => "Identity & Access (IAM)",
+        AssessmentDomain.PrivilegedAccess => "Privileged Access / PIM",
+        AssessmentDomain.DeviceEndpoint => "Device & Endpoint",
+        AssessmentDomain.ExchangeEmailSecurity => "Exchange / Email Security",
+        AssessmentDomain.MicrosoftDefender => "Microsoft Defender",
+        AssessmentDomain.DataProtectionCompliance => "Data Protection & Compliance",
+        AssessmentDomain.AuditLogging => "Audit & Logging",
+        AssessmentDomain.AppGovernance => "App Governance / Consent",
+        AssessmentDomain.CollaborationSecurity => "Collaboration Security",
+        _ => domain.ToString()
+    };
+
+    private string GetDomainDescription(AssessmentDomain domain) => domain switch
+    {
+        AssessmentDomain.IdentityAndAccess => "MFA, Conditional Access, Sign-in risks",
+        AssessmentDomain.PrivilegedAccess => "PIM, Admin roles, Just-in-time access",
+        AssessmentDomain.DeviceEndpoint => "Intune, Compliance policies, BitLocker",
+        AssessmentDomain.ExchangeEmailSecurity => "Anti-phishing, DMARC, Safe links",
+        AssessmentDomain.MicrosoftDefender => "Defender for Endpoint, Office 365, Identity",
+        AssessmentDomain.DataProtectionCompliance => "DLP, Sensitivity labels, Retention",
+        AssessmentDomain.AuditLogging => "Unified audit log, Alert policies",
+        AssessmentDomain.AppGovernance => "OAuth apps, Consent policies, App permissions",
+        AssessmentDomain.CollaborationSecurity => "Teams, SharePoint, OneDrive settings",
+        _ => ""
+    };
+
+    private string GetDomainCardStyle(AssessmentDomain domain) =>
+        $"border-radius: 8px; border-left: 4px solid {(_domainSelections[domain] ? "#51627A" : "#e0e0e0")}; transition: all 0.2s;";
+
+    private Color GetStatusColor(OnboardingStatus status) => status switch
+    {
+        OnboardingStatus.Active => Color.Success,
+        OnboardingStatus.Validated => Color.Info,
+        OnboardingStatus.PermissionsGranted => Color.Info,
+        OnboardingStatus.InProgress => Color.Warning,
+        OnboardingStatus.Pending => Color.Default,
+        _ => Color.Error
+    };
+}

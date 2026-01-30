@@ -88,6 +88,178 @@ else
         </MudItem>
     </MudGrid>
 
+    <!-- M365 Resources Overview -->
+    @if (_resourceStats != null && _resourceStats.TotalUsers > 0)
+    {
+        <MudPaper Class="pa-4 mb-6" Elevation="2">
+            <div class="d-flex justify-space-between align-center mb-4">
+                <MudText Typo="Typo.h6">M365 Resources Overview</MudText>
+                @if (_resourceStats.LastAssessmentDate.HasValue)
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                        Last updated: @_resourceStats.LastAssessmentDate.Value.ToString("MMM dd, yyyy HH:mm")
+                    </MudText>
+                }
+            </div>
+            <MudGrid>
+                <!-- Users Section -->
+                <MudItem xs="12" sm="6" md="3">
+                    <div class="resource-card">
+                        <MudIcon Icon="@Icons.Material.Filled.People" Style="color: #51627A;" Size="Size.Large" Class="mb-2" />
+                        <MudText Typo="Typo.h5" Style="font-weight: 600;">@_resourceStats.TotalUsers.ToString("N0")</MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">Total Users</MudText>
+                        <div class="mt-2">
+                            <MudText Typo="Typo.caption">
+                                <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Small" Style="color: #4CAF50;" />
+                                @_resourceStats.EnabledUsers.ToString("N0") enabled
+                            </MudText>
+                            <MudText Typo="Typo.caption" Class="ml-2">
+                                <MudIcon Icon="@Icons.Material.Filled.PersonAdd" Size="Size.Small" Style="color: #2196F3;" />
+                                @_resourceStats.GuestUsers.ToString("N0") guests
+                            </MudText>
+                        </div>
+                        @if (_resourceStats.RiskyUsers > 0)
+                        {
+                            <MudText Typo="Typo.caption" Class="mt-1" Style="color: #f44336;">
+                                <MudIcon Icon="@Icons.Material.Filled.Warning" Size="Size.Small" />
+                                @_resourceStats.RiskyUsers risky users
+                            </MudText>
+                        }
+                    </div>
+                </MudItem>
+
+                <!-- Admins Section -->
+                <MudItem xs="12" sm="6" md="3">
+                    <div class="resource-card">
+                        <MudIcon Icon="@Icons.Material.Filled.AdminPanelSettings" Style="color: #EF7348;" Size="Size.Large" Class="mb-2" />
+                        <MudText Typo="Typo.h5" Style="font-weight: 600;">@_resourceStats.AdminUsers.ToString("N0")</MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">Admin Users</MudText>
+                        <div class="mt-2">
+                            <MudText Typo="Typo.caption">
+                                <MudIcon Icon="@Icons.Material.Filled.Shield" Size="Size.Small" Style="color: #EF7348;" />
+                                @_resourceStats.GlobalAdmins Global Admins
+                            </MudText>
+                        </div>
+                    </div>
+                </MudItem>
+
+                <!-- Applications Section -->
+                <MudItem xs="12" sm="6" md="3">
+                    <div class="resource-card">
+                        <MudIcon Icon="@Icons.Material.Filled.Apps" Style="color: #9C27B0;" Size="Size.Large" Class="mb-2" />
+                        <MudText Typo="Typo.h5" Style="font-weight: 600;">@_resourceStats.EnterpriseApps.ToString("N0")</MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">Enterprise Apps</MudText>
+                        <div class="mt-2">
+                            <MudText Typo="Typo.caption">
+                                <MudIcon Icon="@Icons.Material.Filled.AppRegistration" Size="Size.Small" Style="color: #673AB7;" />
+                                @_resourceStats.AppRegistrations.ToString("N0") registrations
+                            </MudText>
+                        </div>
+                        @if (_resourceStats.HighRiskApps > 0)
+                        {
+                            <MudText Typo="Typo.caption" Class="mt-1" Style="color: #f44336;">
+                                <MudIcon Icon="@Icons.Material.Filled.Warning" Size="Size.Small" />
+                                @_resourceStats.HighRiskApps high-risk
+                            </MudText>
+                        }
+                    </div>
+                </MudItem>
+
+                <!-- Devices Section -->
+                <MudItem xs="12" sm="6" md="3">
+                    <div class="resource-card">
+                        <MudIcon Icon="@Icons.Material.Filled.Devices" Style="color: #00BCD4;" Size="Size.Large" Class="mb-2" />
+                        <MudText Typo="Typo.h5" Style="font-weight: 600;">@_resourceStats.TotalDevices.ToString("N0")</MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">Devices</MudText>
+                        <div class="mt-2">
+                            <MudText Typo="Typo.caption">
+                                <MudIcon Icon="@Icons.Material.Filled.PhoneAndroid" Size="Size.Small" Style="color: #00BCD4;" />
+                                @_resourceStats.ManagedDevices.ToString("N0") managed
+                            </MudText>
+                            @if (_resourceStats.CompliantDevices > 0)
+                            {
+                                <MudText Typo="Typo.caption" Class="ml-2">
+                                    <MudIcon Icon="@Icons.Material.Filled.VerifiedUser" Size="Size.Small" Style="color: #4CAF50;" />
+                                    @_resourceStats.CompliantDevices.ToString("N0") compliant
+                                </MudText>
+                            }
+                        </div>
+                    </div>
+                </MudItem>
+
+                <!-- Policies Section -->
+                <MudItem xs="12" sm="6" md="3">
+                    <div class="resource-card">
+                        <MudIcon Icon="@Icons.Material.Filled.Policy" Style="color: #FF9800;" Size="Size.Large" Class="mb-2" />
+                        <MudText Typo="Typo.h5" Style="font-weight: 600;">@_resourceStats.ConditionalAccessPolicies.ToString("N0")</MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">CA Policies</MudText>
+                        <div class="mt-2">
+                            <MudText Typo="Typo.caption">
+                                <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Small" Style="color: #4CAF50;" />
+                                @_resourceStats.EnabledCaPolicies enabled
+                            </MudText>
+                        </div>
+                    </div>
+                </MudItem>
+
+                <!-- Groups Section -->
+                <MudItem xs="12" sm="6" md="3">
+                    <div class="resource-card">
+                        <MudIcon Icon="@Icons.Material.Filled.Groups" Style="color: #3F51B5;" Size="Size.Large" Class="mb-2" />
+                        <MudText Typo="Typo.h5" Style="font-weight: 600;">@_resourceStats.TotalGroups.ToString("N0")</MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">Groups</MudText>
+                        <div class="mt-2">
+                            <MudText Typo="Typo.caption">
+                                <MudIcon Icon="@Icons.Material.Filled.Security" Size="Size.Small" Style="color: #3F51B5;" />
+                                @_resourceStats.SecurityGroups security
+                            </MudText>
+                            <MudText Typo="Typo.caption" Class="ml-2">
+                                <MudIcon Icon="@Icons.Material.Filled.Cloud" Size="Size.Small" Style="color: #0078D4;" />
+                                @_resourceStats.Microsoft365Groups M365
+                            </MudText>
+                        </div>
+                    </div>
+                </MudItem>
+
+                <!-- Mailboxes Section -->
+                <MudItem xs="12" sm="6" md="3">
+                    <div class="resource-card">
+                        <MudIcon Icon="@Icons.Material.Filled.Email" Style="color: #0078D4;" Size="Size.Large" Class="mb-2" />
+                        <MudText Typo="Typo.h5" Style="font-weight: 600;">@_resourceStats.Mailboxes.ToString("N0")</MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">Mailboxes</MudText>
+                        @if (_resourceStats.SharedMailboxes > 0)
+                        {
+                            <div class="mt-2">
+                                <MudText Typo="Typo.caption">
+                                    <MudIcon Icon="@Icons.Material.Filled.FolderShared" Size="Size.Small" Style="color: #0078D4;" />
+                                    @_resourceStats.SharedMailboxes.ToString("N0") shared
+                                </MudText>
+                            </div>
+                        }
+                    </div>
+                </MudItem>
+
+                <!-- SharePoint & Teams Section -->
+                <MudItem xs="12" sm="6" md="3">
+                    <div class="resource-card">
+                        <MudIcon Icon="@Icons.Material.Filled.Folder" Style="color: #038387;" Size="Size.Large" Class="mb-2" />
+                        <MudText Typo="Typo.h5" Style="font-weight: 600;">@_resourceStats.SharePointSites.ToString("N0")</MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">SharePoint Sites</MudText>
+                        @if (_resourceStats.TeamsCount > 0)
+                        {
+                            <div class="mt-2">
+                                <MudText Typo="Typo.caption">
+                                    <MudIcon Icon="@Icons.Material.Filled.Group" Size="Size.Small" Style="color: #6264A7;" />
+                                    @_resourceStats.TeamsCount.ToString("N0") Teams
+                                </MudText>
+                            </div>
+                        }
+                    </div>
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+    }
+
     <!-- Quick Actions -->
     <MudPaper Class="pa-4 mb-6" Elevation="2">
         <MudText Typo="Typo.h6" Class="mb-3">Quick Actions</MudText>
@@ -244,12 +416,29 @@ else
         transform: translateY(-2px);
         box-shadow: 0 4px 20px rgba(0,0,0,0.1);
     }
+
+    .resource-card {
+        background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+        border-radius: 12px;
+        padding: 16px;
+        text-align: center;
+        border: 1px solid #e0e0e0;
+        transition: transform 0.2s, box-shadow 0.2s;
+        height: 100%;
+    }
+
+    .resource-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+        border-color: #E0FC8E;
+    }
 </style>
 
 @code {
     private bool _isLoading = true;
     private DashboardSummaryDto _summary = new();
     private List<TenantDto> _tenants = new();
+    private ResourceStatisticsDto? _resourceStats;
 
     protected override async Task OnInitializedAsync()
     {
@@ -257,11 +446,13 @@ else
         {
             var tenantsTask = TenantService.GetAllAsync();
             var summaryTask = DashboardService.GetSummaryAsync();
+            var resourceStatsTask = DashboardService.GetAggregatedResourceStatisticsAsync();
 
-            await Task.WhenAll(tenantsTask, summaryTask);
+            await Task.WhenAll(tenantsTask, summaryTask, resourceStatsTask);
 
             _tenants = (await tenantsTask).ToList();
             _summary = await summaryTask;
+            _resourceStats = await resourceStatsTask;
         }
         catch (Exception ex)
         {

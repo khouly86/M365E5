@@ -1,0 +1,262 @@
+@using Cloudativ.Assessment.Application.DTOs
+
+<div class="governance-analysis-result">
+    @if (!Analysis.IsSuccessful)
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-4">
+            <MudText Typo="Typo.subtitle1" Style="font-weight: 600;">Analysis Failed</MudText>
+            <MudText Typo="Typo.body2">@Analysis.ErrorMessage</MudText>
+        </MudAlert>
+    }
+    else
+    {
+        @* Compliance Score Display *@
+        <MudGrid Class="mb-4">
+            <MudItem xs="12" md="4">
+                <div class="text-center">
+                    <MudProgressCircular Color="@GetScoreColor(Analysis.ComplianceScore)"
+                                         Size="Size.Large"
+                                         Value="@Analysis.ComplianceScore"
+                                         Min="0"
+                                         Max="100"
+                                         StrokeWidth="8">
+                        <div class="d-flex flex-column align-center">
+                            <MudText Typo="Typo.h4" Style="font-weight: 700;">@Analysis.ComplianceScore%</MudText>
+                            <MudText Typo="Typo.caption">Compliance</MudText>
+                        </div>
+                    </MudProgressCircular>
+                </div>
+            </MudItem>
+            <MudItem xs="12" md="8">
+                <MudGrid>
+                    <MudItem xs="6" sm="3">
+                        <div class="text-center pa-2" style="background: #e8f5e9; border-radius: 8px;">
+                            <MudText Typo="Typo.h5" Style="font-weight: 600; color: #2e7d32;">@Analysis.CompliantControls</MudText>
+                            <MudText Typo="Typo.caption">Compliant</MudText>
+                        </div>
+                    </MudItem>
+                    <MudItem xs="6" sm="3">
+                        <div class="text-center pa-2" style="background: #fff3e0; border-radius: 8px;">
+                            <MudText Typo="Typo.h5" Style="font-weight: 600; color: #ef6c00;">@Analysis.PartiallyCompliantControls</MudText>
+                            <MudText Typo="Typo.caption">Partial</MudText>
+                        </div>
+                    </MudItem>
+                    <MudItem xs="6" sm="3">
+                        <div class="text-center pa-2" style="background: #ffebee; border-radius: 8px;">
+                            <MudText Typo="Typo.h5" Style="font-weight: 600; color: #c62828;">@Analysis.NonCompliantControls</MudText>
+                            <MudText Typo="Typo.caption">Non-Compliant</MudText>
+                        </div>
+                    </MudItem>
+                    <MudItem xs="6" sm="3">
+                        <div class="text-center pa-2" style="background: #f5f5f5; border-radius: 8px;">
+                            <MudText Typo="Typo.h5" Style="font-weight: 600; color: #51627A;">@Analysis.TotalControls</MudText>
+                            <MudText Typo="Typo.caption">Total</MudText>
+                        </div>
+                    </MudItem>
+                </MudGrid>
+                <MudText Typo="Typo.caption" Class="mt-2" Style="color: var(--mud-palette-text-secondary);">
+                    Analyzed at @Analysis.AnalyzedAt.ToString("MMM dd, yyyy HH:mm") using @Analysis.AiModelUsed
+                    @if (Analysis.TokensUsed.HasValue)
+                    {
+                        <span> (@Analysis.TokensUsed.Value tokens)</span>
+                    }
+                </MudText>
+            </MudItem>
+        </MudGrid>
+
+        @* Expandable Panels *@
+        <MudExpansionPanels MultiExpansion="true">
+            @* Compliance Gaps *@
+            @if (Analysis.ComplianceGaps.Any())
+            {
+                <MudExpansionPanel @bind-IsExpanded="_gapsExpanded">
+                    <TitleContent>
+                        <div class="d-flex align-center">
+                            <MudIcon Icon="@Icons.Material.Filled.Warning" Color="Color.Error" Class="mr-2" />
+                            <MudText Typo="Typo.subtitle1" Style="font-weight: 600;">
+                                Compliance Gaps (@Analysis.ComplianceGaps.Count)
+                            </MudText>
+                        </div>
+                    </TitleContent>
+                    <ChildContent>
+                        <MudTable Items="@Analysis.ComplianceGaps"
+                                  Dense="true"
+                                  Hover="true"
+                                  Striped="true"
+                                  Bordered="false">
+                            <HeaderContent>
+                                <MudTh>Control</MudTh>
+                                <MudTh>Gap Description</MudTh>
+                                <MudTh>Severity</MudTh>
+                                <MudTh>Current State</MudTh>
+                                <MudTh>Required State</MudTh>
+                            </HeaderContent>
+                            <RowTemplate>
+                                <MudTd DataLabel="Control">
+                                    <MudText Typo="Typo.body2" Style="font-weight: 600;">@context.ControlId</MudText>
+                                    <MudText Typo="Typo.caption" Style="color: var(--mud-palette-text-secondary);">@context.ControlName</MudText>
+                                </MudTd>
+                                <MudTd DataLabel="Gap">@context.GapDescription</MudTd>
+                                <MudTd DataLabel="Severity">
+                                    <MudChip Size="Size.Small"
+                                             Color="@GetSeverityColor(context.Severity)"
+                                             Variant="Variant.Filled">
+                                        @context.Severity
+                                    </MudChip>
+                                </MudTd>
+                                <MudTd DataLabel="Current">@context.CurrentState</MudTd>
+                                <MudTd DataLabel="Required">@context.RequiredState</MudTd>
+                            </RowTemplate>
+                        </MudTable>
+                    </ChildContent>
+                </MudExpansionPanel>
+            }
+
+            @* Recommendations *@
+            @if (Analysis.Recommendations.Any())
+            {
+                <MudExpansionPanel @bind-IsExpanded="_recommendationsExpanded">
+                    <TitleContent>
+                        <div class="d-flex align-center">
+                            <MudIcon Icon="@Icons.Material.Filled.Lightbulb" Color="Color.Info" Class="mr-2" />
+                            <MudText Typo="Typo.subtitle1" Style="font-weight: 600;">
+                                Recommendations (@Analysis.Recommendations.Count)
+                            </MudText>
+                        </div>
+                    </TitleContent>
+                    <ChildContent>
+                        <MudGrid>
+                            @foreach (var rec in Analysis.Recommendations.OrderBy(r => GetPriorityOrder(r.Priority)))
+                            {
+                                <MudItem xs="12" md="6">
+                                    <MudCard Elevation="1" Class="mb-2">
+                                        <MudCardHeader>
+                                            <CardHeaderContent>
+                                                <div class="d-flex align-center">
+                                                    <MudChip Size="Size.Small"
+                                                             Color="@GetPriorityColor(rec.Priority)"
+                                                             Variant="Variant.Filled"
+                                                             Class="mr-2">
+                                                        @rec.Priority
+                                                    </MudChip>
+                                                    <MudText Typo="Typo.subtitle2" Style="font-weight: 600;">@rec.Title</MudText>
+                                                </div>
+                                            </CardHeaderContent>
+                                        </MudCardHeader>
+                                        <MudCardContent Class="pt-0">
+                                            <MudText Typo="Typo.body2">@rec.ImplementationGuidance</MudText>
+                                            @if (rec.RelatedControlIds.Any())
+                                            {
+                                                <div class="mt-2">
+                                                    <MudText Typo="Typo.caption" Style="color: var(--mud-palette-text-secondary);">
+                                                        Related Controls: @string.Join(", ", rec.RelatedControlIds)
+                                                    </MudText>
+                                                </div>
+                                            }
+                                            @if (!string.IsNullOrEmpty(rec.EstimatedEffort))
+                                            {
+                                                <div class="mt-1">
+                                                    <MudChip Size="Size.Small" Variant="Variant.Outlined" Color="Color.Default">
+                                                        @rec.EstimatedEffort
+                                                    </MudChip>
+                                                </div>
+                                            }
+                                        </MudCardContent>
+                                    </MudCard>
+                                </MudItem>
+                            }
+                        </MudGrid>
+                    </ChildContent>
+                </MudExpansionPanel>
+            }
+
+            @* Compliant Areas *@
+            @if (Analysis.CompliantAreas.Any())
+            {
+                <MudExpansionPanel @bind-IsExpanded="_compliantExpanded">
+                    <TitleContent>
+                        <div class="d-flex align-center">
+                            <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" Class="mr-2" />
+                            <MudText Typo="Typo.subtitle1" Style="font-weight: 600;">
+                                Compliant Areas (@Analysis.CompliantAreas.Count)
+                            </MudText>
+                        </div>
+                    </TitleContent>
+                    <ChildContent>
+                        <MudSimpleTable Dense="true" Hover="true" Striped="true">
+                            <thead>
+                                <tr>
+                                    <th>Control</th>
+                                    <th>Status</th>
+                                    <th>Evidence</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var area in Analysis.CompliantAreas)
+                                {
+                                    <tr>
+                                        <td>
+                                            <MudText Typo="Typo.body2" Style="font-weight: 600;">@area.ControlId</MudText>
+                                            <MudText Typo="Typo.caption" Style="color: var(--mud-palette-text-secondary);">@area.ControlName</MudText>
+                                        </td>
+                                        <td>
+                                            <MudChip Size="Size.Small"
+                                                     Color="@(area.ComplianceStatus == "Compliant" ? Color.Success : Color.Warning)"
+                                                     Variant="Variant.Filled">
+                                                @area.ComplianceStatus
+                                            </MudChip>
+                                        </td>
+                                        <td>@area.Evidence</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </MudSimpleTable>
+                    </ChildContent>
+                </MudExpansionPanel>
+            }
+        </MudExpansionPanels>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public GovernanceAnalysisDto Analysis { get; set; } = null!;
+
+    private bool _gapsExpanded = true;
+    private bool _recommendationsExpanded = true;
+    private bool _compliantExpanded = false;
+
+    private static Color GetScoreColor(int score) => score switch
+    {
+        >= 80 => Color.Success,
+        >= 60 => Color.Warning,
+        _ => Color.Error
+    };
+
+    private static Color GetSeverityColor(string severity) => severity?.ToLower() switch
+    {
+        "critical" => Color.Error,
+        "high" => Color.Error,
+        "medium" => Color.Warning,
+        "low" => Color.Info,
+        _ => Color.Default
+    };
+
+    private static Color GetPriorityColor(string priority) => priority?.ToLower() switch
+    {
+        "critical" => Color.Error,
+        "high" => Color.Warning,
+        "medium" => Color.Info,
+        "low" => Color.Default,
+        _ => Color.Default
+    };
+
+    private static int GetPriorityOrder(string priority) => priority?.ToLower() switch
+    {
+        "critical" => 0,
+        "high" => 1,
+        "medium" => 2,
+        "low" => 3,
+        _ => 4
+    };
+}

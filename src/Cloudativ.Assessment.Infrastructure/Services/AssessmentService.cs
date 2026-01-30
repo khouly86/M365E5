@@ -44,6 +44,15 @@ public class AssessmentService : IAssessmentService
         return MapToDto(run, tenant?.Name ?? "Unknown");
     }
 
+    public async Task<IReadOnlyList<AssessmentRunDto>> GetAllRunsAsync(int take = 50, CancellationToken cancellationToken = default)
+    {
+        var runs = await _unitOfWork.AssessmentRuns.GetAllAsync(take, cancellationToken);
+        var tenants = await _unitOfWork.Tenants.GetAllAsync(cancellationToken);
+        var tenantDict = tenants.ToDictionary(t => t.Id, t => t.Name);
+
+        return runs.Select(r => MapToDto(r, tenantDict.GetValueOrDefault(r.TenantId, "Unknown"))).ToList();
+    }
+
     public async Task<IReadOnlyList<AssessmentRunDto>> GetRunsByTenantAsync(Guid tenantId, int take = 10, CancellationToken cancellationToken = default)
     {
         var runs = await _unitOfWork.AssessmentRuns.GetByTenantAsync(tenantId, take, cancellationToken);

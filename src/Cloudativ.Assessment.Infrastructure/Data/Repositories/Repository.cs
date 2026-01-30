@@ -117,6 +117,14 @@ public class AssessmentRunRepository : Repository<AssessmentRun>, IAssessmentRun
             .FirstOrDefaultAsync(cancellationToken);
     }
 
+    public async Task<IReadOnlyList<AssessmentRun>> GetAllAsync(int take, CancellationToken cancellationToken = default)
+    {
+        return await _dbSet
+            .OrderByDescending(r => r.StartedAt)
+            .Take(take)
+            .ToListAsync(cancellationToken);
+    }
+
     public async Task<IReadOnlyList<AssessmentRun>> GetByTenantAsync(Guid tenantId, int take = 10, CancellationToken cancellationToken = default)
     {
         return await _dbSet
@@ -176,5 +184,55 @@ public class AppUserRepository : Repository<AppUser>, IAppUserRepository
             .Include(u => u.TenantAccess)
             .ThenInclude(ta => ta.Tenant)
             .FirstOrDefaultAsync(u => u.Id == id, cancellationToken);
+    }
+
+    public async Task<AppUser?> GetWithAllAccessAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        return await _dbSet
+            .Include(u => u.TenantAccess)
+            .ThenInclude(ta => ta.Tenant)
+            .Include(u => u.DomainAccess)
+            .FirstOrDefaultAsync(u => u.Id == id, cancellationToken);
+    }
+}
+
+public class SubscriptionRepository : Repository<Subscription>, ISubscriptionRepository
+{
+    public SubscriptionRepository(ApplicationDbContext context) : base(context)
+    {
+    }
+
+    public async Task<Subscription?> GetByTenantIdAsync(Guid tenantId, CancellationToken cancellationToken = default)
+    {
+        return await _dbSet.FirstOrDefaultAsync(s => s.TenantId == tenantId, cancellationToken);
+    }
+
+    public async Task<Subscription?> GetByStripeCustomerIdAsync(string stripeCustomerId, CancellationToken cancellationToken = default)
+    {
+        return await _dbSet.FirstOrDefaultAsync(s => s.StripeCustomerId == stripeCustomerId, cancellationToken);
+    }
+
+    public async Task<Subscription?> GetByStripeSubscriptionIdAsync(string stripeSubscriptionId, CancellationToken cancellationToken = default)
+    {
+        return await _dbSet.FirstOrDefaultAsync(s => s.StripeSubscriptionId == stripeSubscriptionId, cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<Subscription>> GetExpiredSubscriptionsAsync(CancellationToken cancellationToken = default)
+    {
+        var now = DateTime.UtcNow;
+        return await _dbSet
+            .Where(s => s.Status != Domain.Enums.SubscriptionStatus.Expired &&
+                        s.Status != Domain.Enums.SubscriptionStatus.Cancelled &&
+                        s.EndDate < now)
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<Subscription>> GetSubscriptionsNeedingResetAsync(DateTime periodStart, CancellationToken cancellationToken = default)
+    {
+        return await _dbSet
+            .Where(s => s.CurrentPeriodStart < periodStart &&
+                        (s.Status == Domain.Enums.SubscriptionStatus.Active ||
+                         s.Status == Domain.Enums.SubscriptionStatus.Trial))
+            .ToListAsync(cancellationToken);
     }
 }

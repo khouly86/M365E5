@@ -81,3 +81,50 @@ public record DomainDetailDto
     public bool IsAvailable { get; init; } = true;
     public string? UnavailableReason { get; init; }
 }
+
+public record ResourceStatisticsDto
+{
+    public Guid? TenantId { get; init; }
+    public string TenantName { get; init; } = string.Empty;
+    public DateTime? LastAssessmentDate { get; init; }
+
+    // Identity & Access
+    public int TotalUsers { get; init; }
+    public int EnabledUsers { get; init; }
+    public int GuestUsers { get; init; }
+    public int AdminUsers { get; init; }
+    public int GlobalAdmins { get; init; }
+    public int RiskyUsers { get; init; }
+
+    // Groups
+    public int TotalGroups { get; init; }
+    public int SecurityGroups { get; init; }
+    public int Microsoft365Groups { get; init; }
+
+    // Applications
+    public int EnterpriseApps { get; init; }
+    public int AppRegistrations { get; init; }
+    public int HighRiskApps { get; init; }
+
+    // Devices
+    public int TotalDevices { get; init; }
+    public int ManagedDevices { get; init; }
+    public int CompliantDevices { get; init; }
+
+    // Policies
+    public int ConditionalAccessPolicies { get; init; }
+    public int EnabledCaPolicies { get; init; }
+    public int DlpPolicies { get; init; }
+
+    // Exchange
+    public int Mailboxes { get; init; }
+    public int SharedMailboxes { get; init; }
+
+    // SharePoint & Teams
+    public int SharePointSites { get; init; }
+    public int TeamsCount { get; init; }
+
+    // Licenses
+    public int TotalLicenses { get; init; }
+    public int AssignedLicenses { get; init; }
+}

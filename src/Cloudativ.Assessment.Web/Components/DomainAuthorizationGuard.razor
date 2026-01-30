@@ -1,0 +1,69 @@
+@inject AuthenticationStateService AuthService
+@inject NavigationManager NavigationManager
+
+@if (_isLoading)
+{
+    <div class="d-flex justify-center align-center" style="min-height: 400px;">
+        <MudProgressCircular Indeterminate="true" Color="Color.Primary" />
+    </div>
+}
+else if (!_isAuthorized)
+{
+    <MudPaper Class="pa-6" Elevation="2" Style="border-radius: 12px; max-width: 600px; margin: 50px auto;">
+        <div class="d-flex flex-column align-center text-center">
+            <MudIcon Icon="@Icons.Material.Filled.Lock" Size="Size.Large" Color="Color.Error" Class="mb-4" />
+            <MudText Typo="Typo.h5" Class="mb-2" Style="font-weight: 600; color: #51627A;">Access Denied</MudText>
+            <MudText Typo="Typo.body1" Color="Color.Secondary" Class="mb-4">
+                You do not have permission to access the <strong>@DomainDisplayName</strong> domain.
+            </MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+                Please contact your administrator if you believe you should have access to this domain.
+            </MudText>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                       StartIcon="@Icons.Material.Filled.ArrowBack"
+                       OnClick="@(() => NavigationManager.NavigateTo("/domains"))">
+                Back to Security Domains
+            </MudButton>
+        </div>
+    </MudPaper>
+}
+else
+{
+    @ChildContent
+}
+
+@code {
+    [Parameter] public AssessmentDomain Domain { get; set; }
+    [Parameter] public string DomainDisplayName { get; set; } = string.Empty;
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    private bool _isLoading = true;
+    private bool _isAuthorized = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CheckAuthorizationAsync();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await CheckAuthorizationAsync();
+    }
+
+    private async Task CheckAuthorizationAsync()
+    {
+        _isLoading = true;
+        try
+        {
+            _isAuthorized = await AuthService.CanAccessDomainAsync(Domain);
+        }
+        catch
+        {
+            _isAuthorized = false;
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+}

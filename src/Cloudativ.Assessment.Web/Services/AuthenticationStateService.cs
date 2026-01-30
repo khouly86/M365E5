@@ -95,6 +95,65 @@ public class AuthenticationStateService
         return await _unitOfWork.AppUsers.GetWithTenantAccessAsync(userId);
     }
 
+    public async Task<AppUser?> GetCurrentUserWithDomainAccessAsync()
+    {
+        var httpContext = _httpContextAccessor.HttpContext;
+        if (httpContext?.User.Identity?.IsAuthenticated != true)
+            return null;
+
+        var userIdClaim = httpContext.User.FindFirst(ClaimTypes.NameIdentifier);
+        if (userIdClaim == null || !Guid.TryParse(userIdClaim.Value, out var userId))
+            return null;
+
+        return await _unitOfWork.AppUsers.GetWithAllAccessAsync(userId);
+    }
+
+    /// <summary>
+    /// Check if the current user can access a specific assessment domain.
+    /// SuperAdmin, TenantAdmin, and Auditor can access all domains.
+    /// DomainAdmin can only access their assigned domains.
+    /// </summary>
+    public async Task<bool> CanAccessDomainAsync(AssessmentDomain domain)
+    {
+        var role = GetCurrentUserRole();
+        if (!role.HasValue)
+            return false;
+
+        // SuperAdmin, TenantAdmin, and Auditor can access all domains
+        if (role.Value != AppRole.DomainAdmin)
+            return true;
+
+        // DomainAdmin - check allowed domains
+        var user = await GetCurrentUserWithDomainAccessAsync();
+        if (user == null)
+            return false;
+
+        return user.DomainAccess.Any(da => da.Domain == domain);
+    }
+
+    /// <summary>
+    /// Get the list of assessment domains the current user can access.
+    /// Returns all domains for SuperAdmin, TenantAdmin, and Auditor.
+    /// Returns only assigned domains for DomainAdmin.
+    /// </summary>
+    public async Task<List<AssessmentDomain>> GetAllowedDomainsAsync()
+    {
+        var role = GetCurrentUserRole();
+        if (!role.HasValue)
+            return new List<AssessmentDomain>();
+
+        // SuperAdmin, TenantAdmin, and Auditor can access all domains
+        if (role.Value != AppRole.DomainAdmin)
+            return Enum.GetValues<AssessmentDomain>().ToList();
+
+        // DomainAdmin - return only assigned domains
+        var user = await GetCurrentUserWithDomainAccessAsync();
+        if (user == null)
+            return new List<AssessmentDomain>();
+
+        return user.DomainAccess.Select(da => da.Domain).ToList();
+    }
+
     public Guid? GetCurrentUserId()
     {
         var httpContext = _httpContextAccessor.HttpContext;

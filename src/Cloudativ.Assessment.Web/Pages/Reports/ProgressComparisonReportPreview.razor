@@ -1,0 +1,141 @@
+@inject IDashboardService DashboardService
+
+<div class="report-preview">
+    <div class="d-flex align-center mb-4">
+        <MudIcon Icon="@Icons.Material.Filled.TrendingUp" Size="Size.Large" Style="color: #16A34A;" Class="mr-3" />
+        <div>
+            <MudText Typo="Typo.h6">Progress Comparison Report</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                Compare security posture changes over time
+            </MudText>
+        </div>
+    </div>
+
+    <MudDivider Class="mb-4" />
+
+    @if (_isLoading)
+    {
+        <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+    }
+    else if (_scoreTrend.Any())
+    {
+        <MudText Typo="Typo.subtitle1" Class="mb-3">Score Trend</MudText>
+
+        <MudChart ChartType="ChartType.Line"
+                  ChartSeries="@_chartSeries"
+                  XAxisLabels="@_chartLabels"
+                  Width="100%"
+                  Height="200px"
+                  ChartOptions="@_chartOptions" />
+
+        <MudGrid Class="mt-4" Spacing="2">
+            @if (_scoreTrend.Count >= 2)
+            {
+                var firstScore = _scoreTrend.First().Score;
+                var lastScore = _scoreTrend.Last().Score;
+                var change = lastScore - firstScore;
+
+                <MudItem xs="6" md="4">
+                    <MudPaper Class="pa-3" Elevation="1">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Starting Score</MudText>
+                        <MudText Typo="Typo.h5" Style="font-weight: 600;">@firstScore%</MudText>
+                        <MudText Typo="Typo.caption">@_scoreTrend.First().Label</MudText>
+                    </MudPaper>
+                </MudItem>
+
+                <MudItem xs="6" md="4">
+                    <MudPaper Class="pa-3" Elevation="1">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Current Score</MudText>
+                        <MudText Typo="Typo.h5" Style="font-weight: 600;">@lastScore%</MudText>
+                        <MudText Typo="Typo.caption">@_scoreTrend.Last().Label</MudText>
+                    </MudPaper>
+                </MudItem>
+
+                <MudItem xs="6" md="4">
+                    <MudPaper Class="pa-3" Elevation="1">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Change</MudText>
+                        <div class="d-flex align-center">
+                            <MudIcon Icon="@(change > 0 ? Icons.Material.Filled.TrendingUp : change < 0 ? Icons.Material.Filled.TrendingDown : Icons.Material.Filled.TrendingFlat)"
+                                     Color="@(change > 0 ? Color.Success : change < 0 ? Color.Error : Color.Default)"
+                                     Size="Size.Medium" />
+                            <MudText Typo="Typo.h5" Style="@($"font-weight: 600; color: {(change > 0 ? "#16A34A" : change < 0 ? "#DC2626" : "#6B7280")}")">
+                                @(change > 0 ? "+" : "")@change%
+                            </MudText>
+                        </div>
+                        <MudText Typo="Typo.caption">Over @_scoreTrend.Count assessments</MudText>
+                    </MudPaper>
+                </MudItem>
+            }
+        </MudGrid>
+
+        <MudText Typo="Typo.subtitle2" Class="mt-4 mb-2">Report Includes:</MudText>
+        <MudList T="string" Dense="true">
+            <MudListItem Icon="@Icons.Material.Filled.Check" IconColor="Color.Success">Score trend visualization</MudListItem>
+            <MudListItem Icon="@Icons.Material.Filled.Check" IconColor="Color.Success">Assessment-by-assessment comparison</MudListItem>
+            <MudListItem Icon="@Icons.Material.Filled.Check" IconColor="Color.Success">Domain-level progress tracking</MudListItem>
+            <MudListItem Icon="@Icons.Material.Filled.Check" IconColor="Color.Success">Findings resolved vs new</MudListItem>
+            <MudListItem Icon="@Icons.Material.Filled.Check" IconColor="Color.Success">Improvement recommendations</MudListItem>
+        </MudList>
+    }
+    else
+    {
+        <MudAlert Severity="Severity.Info">
+            Select a tenant with multiple assessments to see progress comparison.
+        </MudAlert>
+    }
+</div>
+
+@code {
+    [Parameter] public Guid? TenantId { get; set; }
+    [Parameter] public DateRange? DateRange { get; set; }
+
+    private List<ScoreTrendPoint> _scoreTrend = new();
+    private List<ChartSeries> _chartSeries = new();
+    private string[] _chartLabels = Array.Empty<string>();
+    private ChartOptions _chartOptions = new() { YAxisTicks = 10, MaxNumYAxisTicks = 10 };
+    private bool _isLoading = false;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await LoadTrendDataAsync();
+    }
+
+    private async Task LoadTrendDataAsync()
+    {
+        if (!TenantId.HasValue) return;
+
+        _isLoading = true;
+        try
+        {
+            _scoreTrend = await DashboardService.GetScoreTrendAsync(TenantId.Value, 12);
+
+            if (DateRange?.Start != null && DateRange?.End != null)
+            {
+                _scoreTrend = _scoreTrend
+                    .Where(s => s.Date >= DateRange.Start && s.Date <= DateRange.End)
+                    .ToList();
+            }
+
+            if (_scoreTrend.Any())
+            {
+                _chartLabels = _scoreTrend.Select(s => s.Label).ToArray();
+                _chartSeries = new List<ChartSeries>
+                {
+                    new ChartSeries
+                    {
+                        Name = "Score",
+                        Data = _scoreTrend.Select(s => (double)s.Score).ToArray()
+                    }
+                };
+            }
+        }
+        catch
+        {
+            _scoreTrend = new();
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+}

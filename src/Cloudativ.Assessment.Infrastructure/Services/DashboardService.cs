@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Cloudativ.Assessment.Application.DTOs;
 using Cloudativ.Assessment.Application.Interfaces;
+using Cloudativ.Assessment.Domain.Entities;
 using Cloudativ.Assessment.Domain.Enums;
 using Cloudativ.Assessment.Domain.Interfaces;
 using Microsoft.Extensions.Logging;
@@ -260,4 +261,452 @@ public class DashboardService : IDashboardService
         >= 60 => "D",
         _ => "F"
     };
+
+    public async Task<ResourceStatisticsDto?> GetResourceStatisticsAsync(Guid tenantId, CancellationToken cancellationToken = default)
+    {
+        var tenant = await _unitOfWork.Tenants.GetByIdAsync(tenantId, cancellationToken);
+        if (tenant == null)
+            return null;
+
+        var latestRun = await _unitOfWork.AssessmentRuns.GetLatestByTenantAsync(tenantId, cancellationToken);
+        if (latestRun == null)
+        {
+            return new ResourceStatisticsDto
+            {
+                TenantId = tenantId,
+                TenantName = tenant.Name
+            };
+        }
+
+        // Get raw snapshots from the latest assessment
+        var snapshots = await _unitOfWork.RawSnapshots.FindAsync(
+            s => s.AssessmentRunId == latestRun.Id,
+            cancellationToken);
+
+        var stats = new ResourceStatisticsDto
+        {
+            TenantId = tenantId,
+            TenantName = tenant.Name,
+            LastAssessmentDate = latestRun.CompletedAt ?? latestRun.StartedAt
+        };
+
+        // Parse metrics from each domain's raw data
+        foreach (var snapshot in snapshots)
+        {
+            stats = ExtractMetricsFromSnapshot(stats, snapshot);
+        }
+
+        return stats;
+    }
+
+    public async Task<ResourceStatisticsDto> GetAggregatedResourceStatisticsAsync(CancellationToken cancellationToken = default)
+    {
+        var tenants = await _unitOfWork.Tenants.GetAllAsync(cancellationToken);
+        var activeTenants = tenants.Where(t => t.OnboardingStatus == OnboardingStatus.Active ||
+                                                t.OnboardingStatus == OnboardingStatus.Validated).ToList();
+
+        var aggregated = new ResourceStatisticsDto
+        {
+            TenantName = "All Tenants"
+        };
+
+        int totalUsers = 0, enabledUsers = 0, guestUsers = 0, adminUsers = 0, globalAdmins = 0, riskyUsers = 0;
+        int totalGroups = 0, securityGroups = 0, m365Groups = 0;
+        int enterpriseApps = 0, appRegistrations = 0, highRiskApps = 0;
+        int totalDevices = 0, managedDevices = 0, compliantDevices = 0;
+        int caPolicies = 0, enabledCaPolicies = 0, dlpPolicies = 0;
+        int mailboxes = 0, sharedMailboxes = 0;
+        int spSites = 0, teams = 0;
+        int totalLicenses = 0, assignedLicenses = 0;
+        DateTime? lastAssessmentDate = null;
+
+        foreach (var tenant in activeTenants)
+        {
+            var tenantStats = await GetResourceStatisticsAsync(tenant.Id, cancellationToken);
+            if (tenantStats != null)
+            {
+                totalUsers += tenantStats.TotalUsers;
+                enabledUsers += tenantStats.EnabledUsers;
+                guestUsers += tenantStats.GuestUsers;
+                adminUsers += tenantStats.AdminUsers;
+                globalAdmins += tenantStats.GlobalAdmins;
+                riskyUsers += tenantStats.RiskyUsers;
+                totalGroups += tenantStats.TotalGroups;
+                securityGroups += tenantStats.SecurityGroups;
+                m365Groups += tenantStats.Microsoft365Groups;
+                enterpriseApps += tenantStats.EnterpriseApps;
+                appRegistrations += tenantStats.AppRegistrations;
+                highRiskApps += tenantStats.HighRiskApps;
+                totalDevices += tenantStats.TotalDevices;
+                managedDevices += tenantStats.ManagedDevices;
+                compliantDevices += tenantStats.CompliantDevices;
+                caPolicies += tenantStats.ConditionalAccessPolicies;
+                enabledCaPolicies += tenantStats.EnabledCaPolicies;
+                dlpPolicies += tenantStats.DlpPolicies;
+                mailboxes += tenantStats.Mailboxes;
+                sharedMailboxes += tenantStats.SharedMailboxes;
+                spSites += tenantStats.SharePointSites;
+                teams += tenantStats.TeamsCount;
+                totalLicenses += tenantStats.TotalLicenses;
+                assignedLicenses += tenantStats.AssignedLicenses;
+
+                if (tenantStats.LastAssessmentDate.HasValue &&
+                    (!lastAssessmentDate.HasValue || tenantStats.LastAssessmentDate > lastAssessmentDate))
+                {
+                    lastAssessmentDate = tenantStats.LastAssessmentDate;
+                }
+            }
+        }
+
+        return new ResourceStatisticsDto
+        {
+            TenantName = "All Tenants",
+            LastAssessmentDate = lastAssessmentDate,
+            TotalUsers = totalUsers,
+            EnabledUsers = enabledUsers,
+            GuestUsers = guestUsers,
+            AdminUsers = adminUsers,
+            GlobalAdmins = globalAdmins,
+            RiskyUsers = riskyUsers,
+            TotalGroups = totalGroups,
+            SecurityGroups = securityGroups,
+            Microsoft365Groups = m365Groups,
+            EnterpriseApps = enterpriseApps,
+            AppRegistrations = appRegistrations,
+            HighRiskApps = highRiskApps,
+            TotalDevices = totalDevices,
+            ManagedDevices = managedDevices,
+            CompliantDevices = compliantDevices,
+            ConditionalAccessPolicies = caPolicies,
+            EnabledCaPolicies = enabledCaPolicies,
+            DlpPolicies = dlpPolicies,
+            Mailboxes = mailboxes,
+            SharedMailboxes = sharedMailboxes,
+            SharePointSites = spSites,
+            TeamsCount = teams,
+            TotalLicenses = totalLicenses,
+            AssignedLicenses = assignedLicenses
+        };
+    }
+
+    private ResourceStatisticsDto ExtractMetricsFromSnapshot(ResourceStatisticsDto stats, RawSnapshot snapshot)
+    {
+        if (string.IsNullOrEmpty(snapshot.PayloadJson))
+            return stats;
+
+        try
+        {
+            // The PayloadJson contains a dictionary where keys are data types (users, directoryRoles, etc.)
+            // and values are the JSON strings from the Graph API
+            using var doc = JsonDocument.Parse(snapshot.PayloadJson);
+            var root = doc.RootElement;
+
+            // Iterate through the dictionary properties
+            foreach (var property in root.EnumerateObject())
+            {
+                var dataType = property.Name.ToLowerInvariant();
+                var valueJson = property.Value.GetString();
+
+                if (string.IsNullOrEmpty(valueJson))
+                    continue;
+
+                try
+                {
+                    using var dataDoc = JsonDocument.Parse(valueJson);
+                    var dataRoot = dataDoc.RootElement;
+
+                    stats = ExtractFromDataType(stats, dataType, dataRoot);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug(ex, "Failed to parse data for {DataType}", dataType);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to extract metrics from snapshot for domain {Domain}", snapshot.Domain);
+        }
+
+        return stats;
+    }
+
+    private ResourceStatisticsDto ExtractFromDataType(ResourceStatisticsDto stats, string dataType, JsonElement dataRoot)
+    {
+        switch (dataType)
+        {
+            case "users":
+                var userCount = GetArrayCount(dataRoot);
+                var enabledUsers = CountByProperty(dataRoot, "accountEnabled", true);
+                var guestUsers = CountByStringProperty(dataRoot, "userType", "Guest");
+                stats = stats with
+                {
+                    TotalUsers = userCount,
+                    EnabledUsers = enabledUsers > 0 ? enabledUsers : userCount,
+                    GuestUsers = guestUsers
+                };
+                break;
+
+            case "directoryroles":
+                var adminCount = CountTotalMembers(dataRoot);
+                var globalAdminCount = CountGlobalAdmins(dataRoot);
+                stats = stats with
+                {
+                    AdminUsers = adminCount,
+                    GlobalAdmins = globalAdminCount
+                };
+                break;
+
+            case "riskyusers":
+                stats = stats with { RiskyUsers = GetArrayCount(dataRoot) };
+                break;
+
+            case "groups":
+                var groupCount = GetArrayCount(dataRoot);
+                stats = stats with
+                {
+                    TotalGroups = groupCount,
+                    Microsoft365Groups = CountByArrayContains(dataRoot, "groupTypes", "Unified")
+                };
+                break;
+
+            case "enterpriseapps":
+            case "serviceprincipals":
+                stats = stats with { EnterpriseApps = GetArrayCount(dataRoot) };
+                break;
+
+            case "appregistrations":
+            case "applications":
+                stats = stats with { AppRegistrations = GetArrayCount(dataRoot) };
+                break;
+
+            case "conditionalaccesspolicies":
+                var caCount = GetArrayCount(dataRoot);
+                var enabledCount = CountByStringProperty(dataRoot, "state", "enabled");
+                stats = stats with
+                {
+                    ConditionalAccessPolicies = caCount,
+                    EnabledCaPolicies = enabledCount
+                };
+                break;
+
+            case "manageddevices":
+            case "devices":
+                var deviceCount = GetArrayCount(dataRoot);
+                var managed = CountByProperty(dataRoot, "isManaged", true);
+                var compliant = CountByProperty(dataRoot, "isCompliant", true);
+                stats = stats with
+                {
+                    TotalDevices = deviceCount,
+                    ManagedDevices = managed > 0 ? managed : deviceCount,
+                    CompliantDevices = compliant
+                };
+                break;
+
+            case "mailboxes":
+                stats = stats with { Mailboxes = GetArrayCount(dataRoot) };
+                break;
+
+            case "sharedmailboxes":
+                stats = stats with { SharedMailboxes = GetArrayCount(dataRoot) };
+                break;
+
+            case "sharepointsites":
+            case "sites":
+                stats = stats with { SharePointSites = GetArrayCount(dataRoot) };
+                break;
+
+            case "teams":
+                stats = stats with { TeamsCount = GetArrayCount(dataRoot) };
+                break;
+
+            case "dlppolicies":
+            case "informationprotectionpolicies":
+                stats = stats with { DlpPolicies = GetArrayCount(dataRoot) };
+                break;
+
+            case "subscribedskus":
+            case "licenses":
+                var licenses = CalculateLicenseCounts(dataRoot);
+                stats = stats with
+                {
+                    TotalLicenses = licenses.total,
+                    AssignedLicenses = licenses.assigned
+                };
+                break;
+        }
+
+        return stats;
+    }
+
+    private static int GetArrayCount(JsonElement root)
+    {
+        if (root.TryGetProperty("value", out var valueArray) && valueArray.ValueKind == JsonValueKind.Array)
+            return valueArray.GetArrayLength();
+        if (root.ValueKind == JsonValueKind.Array)
+            return root.GetArrayLength();
+        return 0;
+    }
+
+    private static int CountByProperty(JsonElement root, string propertyName, bool expectedValue)
+    {
+        var count = 0;
+        JsonElement array = root;
+
+        if (root.TryGetProperty("value", out var valueArray))
+            array = valueArray;
+
+        if (array.ValueKind != JsonValueKind.Array)
+            return 0;
+
+        foreach (var item in array.EnumerateArray())
+        {
+            if (item.TryGetProperty(propertyName, out var prop) &&
+                prop.ValueKind == JsonValueKind.True == expectedValue)
+            {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private static int CountByStringProperty(JsonElement root, string propertyName, string expectedValue)
+    {
+        var count = 0;
+        JsonElement array = root;
+
+        if (root.TryGetProperty("value", out var valueArray))
+            array = valueArray;
+
+        if (array.ValueKind != JsonValueKind.Array)
+            return 0;
+
+        foreach (var item in array.EnumerateArray())
+        {
+            if (item.TryGetProperty(propertyName, out var prop) &&
+                prop.ValueKind == JsonValueKind.String &&
+                string.Equals(prop.GetString(), expectedValue, StringComparison.OrdinalIgnoreCase))
+            {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private static int CountByArrayContains(JsonElement root, string propertyName, string containsValue)
+    {
+        var count = 0;
+        JsonElement array = root;
+
+        if (root.TryGetProperty("value", out var valueArray))
+            array = valueArray;
+
+        if (array.ValueKind != JsonValueKind.Array)
+            return 0;
+
+        foreach (var item in array.EnumerateArray())
+        {
+            if (item.TryGetProperty(propertyName, out var prop) && prop.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var element in prop.EnumerateArray())
+                {
+                    if (element.ValueKind == JsonValueKind.String &&
+                        string.Equals(element.GetString(), containsValue, StringComparison.OrdinalIgnoreCase))
+                    {
+                        count++;
+                        break;
+                    }
+                }
+            }
+        }
+        return count;
+    }
+
+    private static int CountTotalMembers(JsonElement root)
+    {
+        var count = 0;
+        JsonElement array = root;
+
+        if (root.TryGetProperty("value", out var valueArray))
+            array = valueArray;
+
+        if (array.ValueKind != JsonValueKind.Array)
+            return 0;
+
+        var seenIds = new HashSet<string>();
+
+        foreach (var role in array.EnumerateArray())
+        {
+            if (role.TryGetProperty("members", out var members) && members.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var member in members.EnumerateArray())
+                {
+                    if (member.TryGetProperty("id", out var id) && id.ValueKind == JsonValueKind.String)
+                    {
+                        var idStr = id.GetString();
+                        if (!string.IsNullOrEmpty(idStr) && seenIds.Add(idStr))
+                        {
+                            count++;
+                        }
+                    }
+                }
+            }
+        }
+        return count;
+    }
+
+    private static int CountGlobalAdmins(JsonElement root)
+    {
+        JsonElement array = root;
+
+        if (root.TryGetProperty("value", out var valueArray))
+            array = valueArray;
+
+        if (array.ValueKind != JsonValueKind.Array)
+            return 0;
+
+        foreach (var role in array.EnumerateArray())
+        {
+            if (role.TryGetProperty("displayName", out var displayName) &&
+                displayName.ValueKind == JsonValueKind.String &&
+                displayName.GetString()?.Contains("Global Administrator", StringComparison.OrdinalIgnoreCase) == true)
+            {
+                if (role.TryGetProperty("members", out var members) && members.ValueKind == JsonValueKind.Array)
+                {
+                    return members.GetArrayLength();
+                }
+            }
+        }
+        return 0;
+    }
+
+    private static (int total, int assigned) CalculateLicenseCounts(JsonElement root)
+    {
+        int total = 0, assigned = 0;
+        JsonElement array = root;
+
+        if (root.TryGetProperty("value", out var valueArray))
+            array = valueArray;
+
+        if (array.ValueKind != JsonValueKind.Array)
+            return (0, 0);
+
+        foreach (var sku in array.EnumerateArray())
+        {
+            if (sku.TryGetProperty("prepaidUnits", out var prepaid))
+            {
+                if (prepaid.TryGetProperty("enabled", out var enabled) &&
+                    enabled.ValueKind == JsonValueKind.Number)
+                {
+                    total += enabled.GetInt32();
+                }
+            }
+            if (sku.TryGetProperty("consumedUnits", out var consumed) &&
+                consumed.ValueKind == JsonValueKind.Number)
+            {
+                assigned += consumed.GetInt32();
+            }
+        }
+        return (total, assigned);
+    }
 }

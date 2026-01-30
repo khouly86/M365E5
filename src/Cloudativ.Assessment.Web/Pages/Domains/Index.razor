@@ -1,0 +1,165 @@
+@page "/domains"
+@attribute [Authorize]
+@inject ITenantService TenantService
+@inject IAssessmentService AssessmentService
+@inject NavigationManager NavigationManager
+@inject AuthenticationStateService AuthService
+
+<PageTitle>Security Domains - Cloudativ Assessment</PageTitle>
+
+<div class="d-flex justify-space-between align-center mb-4">
+    <div>
+        <MudText Typo="Typo.h5" Style="font-weight: 600; color: #51627A;">Security Domains</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">
+            Explore detailed findings and recommendations for each security domain
+        </MudText>
+    </div>
+    <MudSelect T="Guid?" Label="Select Tenant" Value="_selectedTenantId" Variant="Variant.Outlined"
+               Dense="true" Style="min-width: 200px;" ValueChanged="@OnTenantChanged">
+        @foreach (var tenant in _tenants)
+        {
+            <MudSelectItem Value="@((Guid?)tenant.Id)">@tenant.Name</MudSelectItem>
+        }
+    </MudSelect>
+</div>
+
+@if (_isLoading)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="mb-4" />
+}
+else
+{
+    <MudGrid>
+        @foreach (var domain in _domains)
+        {
+            <MudItem xs="12" sm="6" md="4">
+                <MudCard Elevation="2" Style="border-radius: 12px; cursor: pointer; transition: all 0.2s;"
+                         Class="domain-card" @onclick="@(() => NavigateToDomain(domain.Route))">
+                    <MudCardContent>
+                        <div class="d-flex align-center mb-3">
+                            <MudAvatar Size="Size.Large" Style="@($"background: {domain.Color}20; color: {domain.Color};")">
+                                <MudIcon Icon="@domain.Icon" />
+                            </MudAvatar>
+                            <div class="ml-3" style="flex: 1;">
+                                <MudText Typo="Typo.h6" Style="font-weight: 600;">@domain.Name</MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">@domain.Description</MudText>
+                            </div>
+                        </div>
+
+                        @if (_domainScores.TryGetValue(domain.Domain, out var score))
+                        {
+                            <div class="d-flex justify-space-between align-center mt-3">
+                                <div>
+                                    <MudProgressLinear Value="@score.Score" Color="@GetProgressColor(score.Score)"
+                                                       Style="width: 120px; height: 8px; border-radius: 4px;" />
+                                    <MudText Typo="Typo.caption" Class="mt-1">@score.Score% - Grade @score.Grade</MudText>
+                                </div>
+                                <div class="d-flex gap-1">
+                                    @if (score.CriticalCount > 0)
+                                    {
+                                        <MudChip Size="Size.Small" Color="Color.Error" Variant="Variant.Filled">@score.CriticalCount</MudChip>
+                                    }
+                                    @if (score.HighCount > 0)
+                                    {
+                                        <MudChip Size="Size.Small" Color="Color.Warning" Variant="Variant.Filled">@score.HighCount</MudChip>
+                                    }
+                                </div>
+                            </div>
+                        }
+                        else
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-3">
+                                Run an assessment to see domain score
+                            </MudText>
+                        }
+                    </MudCardContent>
+                    <MudCardActions>
+                        <MudButton Variant="Variant.Text" Color="Color.Primary" EndIcon="@Icons.Material.Filled.ArrowForward">
+                            View Details
+                        </MudButton>
+                    </MudCardActions>
+                </MudCard>
+            </MudItem>
+        }
+    </MudGrid>
+}
+
+<style>
+    .domain-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 8px 24px rgba(0,0,0,0.12) !important;
+    }
+</style>
+
+@code {
+    private bool _isLoading = true;
+    private List<TenantDto> _tenants = new();
+    private Guid? _selectedTenantId;
+    private Dictionary<AssessmentDomain, DomainScoreSummary> _domainScores = new();
+    private List<AssessmentDomain> _allowedDomains = new();
+
+    private readonly List<DomainInfo> _allDomains = new()
+    {
+        new("Identity & Access", "Users, MFA, Conditional Access, authentication", "/domains/iam", Icons.Material.Filled.Security, "#3B82F6", AssessmentDomain.IdentityAndAccess),
+        new("Privileged Access", "PIM, admin roles, just-in-time access", "/domains/pim", Icons.Material.Filled.AdminPanelSettings, "#8B5CF6", AssessmentDomain.PrivilegedAccess),
+        new("Device & Endpoint", "Intune, compliance, BitLocker, device management", "/domains/device", Icons.Material.Filled.Devices, "#10B981", AssessmentDomain.DeviceEndpoint),
+        new("Exchange / Email", "Anti-phishing, DMARC, safe links, attachments", "/domains/exchange", Icons.Material.Filled.Email, "#F59E0B", AssessmentDomain.ExchangeEmailSecurity),
+        new("Microsoft Defender", "Defender for Endpoint, Office 365, Identity", "/domains/defender", Icons.Material.Filled.Shield, "#EF4444", AssessmentDomain.MicrosoftDefender),
+        new("Data Protection", "DLP policies, sensitivity labels, retention", "/domains/dlp", Icons.Material.Filled.Lock, "#06B6D4", AssessmentDomain.DataProtectionCompliance),
+        new("Audit & Logging", "Unified audit log, alert policies, monitoring", "/domains/audit", Icons.Material.Filled.History, "#84CC16", AssessmentDomain.AuditLogging),
+        new("App Governance", "OAuth apps, consent policies, permissions", "/domains/apps", Icons.Material.Filled.Apps, "#F472B6", AssessmentDomain.AppGovernance),
+        new("Collaboration", "Teams, SharePoint, OneDrive, guest access", "/domains/collaboration", Icons.Material.Filled.Groups, "#6366F1", AssessmentDomain.CollaborationSecurity)
+    };
+
+    private IEnumerable<DomainInfo> _domains => _allDomains.Where(d => _allowedDomains.Contains(d.Domain));
+
+    protected override async Task OnInitializedAsync()
+    {
+        _allowedDomains = await AuthService.GetAllowedDomainsAsync();
+        _tenants = (await TenantService.GetAllAsync()).ToList();
+        _selectedTenantId = _tenants.FirstOrDefault()?.Id;
+        await LoadScoresAsync();
+    }
+
+    private async Task OnTenantChanged(Guid? tenantId)
+    {
+        _selectedTenantId = tenantId;
+        await LoadScoresAsync();
+    }
+
+    private async Task LoadScoresAsync()
+    {
+        _isLoading = true;
+        _domainScores.Clear();
+
+        if (_selectedTenantId.HasValue)
+        {
+            var runs = await AssessmentService.GetRunsByTenantAsync(_selectedTenantId.Value, 1);
+            var latestRun = runs.FirstOrDefault();
+
+            if (latestRun != null)
+            {
+                _domainScores = latestRun.DomainScores.ToDictionary(
+                    kvp => Enum.Parse<AssessmentDomain>(kvp.Key),
+                    kvp => kvp.Value
+                );
+            }
+        }
+
+        _isLoading = false;
+    }
+
+    private void NavigateToDomain(string route)
+    {
+        NavigationManager.NavigateTo(route);
+    }
+
+    private Color GetProgressColor(int score) => score switch
+    {
+        >= 90 => Color.Success,
+        >= 70 => Color.Warning,
+        _ => Color.Error
+    };
+
+    private record DomainInfo(string Name, string Description, string Route, string Icon, string Color, AssessmentDomain Domain);
+}

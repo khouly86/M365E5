@@ -1,0 +1,417 @@
+@page "/assessments/compare"
+@page "/assessments/compare/{TenantId:guid}"
+@attribute [Authorize]
+@inject IAssessmentService AssessmentService
+@inject ITenantService TenantService
+@inject NavigationManager NavigationManager
+@inject ISnackbar Snackbar
+@using FindingSeverity = Cloudativ.Assessment.Domain.Enums.Severity
+
+<PageTitle>Compare Assessments - Cloudativ Assessment</PageTitle>
+
+<div class="d-flex align-center mb-4">
+    <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" OnClick="GoBack" />
+    <MudText Typo="Typo.h5" Style="font-weight: 600; color: #51627A;">Compare Assessments</MudText>
+</div>
+
+@if (_isLoading)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+}
+else
+{
+    <MudGrid>
+        <!-- Tenant & Assessment Selection -->
+        <MudItem xs="12">
+            <MudPaper Class="pa-4" Elevation="2" Style="border-radius: 12px;">
+                <MudGrid>
+                    <MudItem xs="12" md="4">
+                        <MudSelect T="Guid?" @bind-Value="_selectedTenantId" Label="Select Tenant" Variant="Variant.Outlined"
+                                   AnchorOrigin="Origin.BottomCenter">
+                            @foreach (var tenant in _tenants)
+                            {
+                                <MudSelectItem Value="@((Guid?)tenant.Id)">@tenant.Name (@tenant.Domain)</MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudItem>
+                    <MudItem xs="12" md="4">
+                        <MudSelect T="Guid?" @bind-Value="_baselineAssessmentId" Label="Baseline Assessment" Variant="Variant.Outlined"
+                                   Disabled="@(!_selectedTenantId.HasValue)" AnchorOrigin="Origin.BottomCenter">
+                            @foreach (var run in _tenantAssessments.Where(r => r.Status == AssessmentStatus.Completed))
+                            {
+                                <MudSelectItem Value="@((Guid?)run.Id)">
+                                    @run.StartedAt.ToString("MMM dd, yyyy HH:mm") - Score: @(run.OverallScore?.ToString() ?? "N/A")%
+                                </MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudItem>
+                    <MudItem xs="12" md="4">
+                        <MudSelect T="Guid?" @bind-Value="_compareAssessmentId" Label="Compare With" Variant="Variant.Outlined"
+                                   Disabled="@(!_baselineAssessmentId.HasValue)" AnchorOrigin="Origin.BottomCenter">
+                            @foreach (var run in _tenantAssessments.Where(r => r.Status == AssessmentStatus.Completed && r.Id != _baselineAssessmentId))
+                            {
+                                <MudSelectItem Value="@((Guid?)run.Id)">
+                                    @run.StartedAt.ToString("MMM dd, yyyy HH:mm") - Score: @(run.OverallScore?.ToString() ?? "N/A")%
+                                </MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudItem>
+                </MudGrid>
+            </MudPaper>
+        </MudItem>
+
+        @if (_baselineRun != null && _compareRun != null)
+        {
+            <!-- Overall Score Comparison -->
+            <MudItem xs="12">
+                <MudPaper Class="pa-4" Elevation="2" Style="border-radius: 12px;">
+                    <MudText Typo="Typo.h6" Class="mb-4">Overall Score Comparison</MudText>
+                    <MudGrid>
+                        <MudItem xs="12" md="5">
+                            <div class="text-center">
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">Baseline</MudText>
+                                <MudText Typo="Typo.body2" Color="Color.Secondary">@_baselineRun.StartedAt.ToString("MMM dd, yyyy")</MudText>
+                                <MudText Typo="Typo.h2" Style="@($"font-weight: 600; color: {GetScoreColor(_baselineRun.OverallScore ?? 0)}")">
+                                    @(_baselineRun.OverallScore ?? 0)%
+                                </MudText>
+                            </div>
+                        </MudItem>
+                        <MudItem xs="12" md="2">
+                            <div class="d-flex flex-column align-center justify-center" style="height: 100%;">
+                                @{
+                                    var scoreDiff = (_compareRun.OverallScore ?? 0) - (_baselineRun.OverallScore ?? 0);
+                                }
+                                <MudIcon Icon="@(scoreDiff > 0 ? Icons.Material.Filled.TrendingUp : scoreDiff < 0 ? Icons.Material.Filled.TrendingDown : Icons.Material.Filled.TrendingFlat)"
+                                         Color="@(scoreDiff > 0 ? Color.Success : scoreDiff < 0 ? Color.Error : Color.Default)"
+                                         Size="Size.Large" />
+                                <MudText Typo="Typo.h5" Style="@($"color: {(scoreDiff > 0 ? "#4CAF50" : scoreDiff < 0 ? "#f44336" : "#666")}")">
+                                    @(scoreDiff > 0 ? "+" : "")@scoreDiff%
+                                </MudText>
+                            </div>
+                        </MudItem>
+                        <MudItem xs="12" md="5">
+                            <div class="text-center">
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">Compare</MudText>
+                                <MudText Typo="Typo.body2" Color="Color.Secondary">@_compareRun.StartedAt.ToString("MMM dd, yyyy")</MudText>
+                                <MudText Typo="Typo.h2" Style="@($"font-weight: 600; color: {GetScoreColor(_compareRun.OverallScore ?? 0)}")">
+                                    @(_compareRun.OverallScore ?? 0)%
+                                </MudText>
+                            </div>
+                        </MudItem>
+                    </MudGrid>
+                </MudPaper>
+            </MudItem>
+
+            <!-- Domain Score Comparison -->
+            <MudItem xs="12">
+                <MudPaper Class="pa-4" Elevation="2" Style="border-radius: 12px;">
+                    <MudText Typo="Typo.h6" Class="mb-4">Domain Score Comparison</MudText>
+                    <MudTable Items="@GetDomainComparison()" Hover="true" Dense="true">
+                        <HeaderContent>
+                            <MudTh>Domain</MudTh>
+                            <MudTh Style="text-align: center;">Baseline Score</MudTh>
+                            <MudTh Style="text-align: center;">Change</MudTh>
+                            <MudTh Style="text-align: center;">Current Score</MudTh>
+                            <MudTh>Trend</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd>@context.DisplayName</MudTd>
+                            <MudTd Style="text-align: center;">
+                                <MudChip Size="Size.Small" Style="@($"background: {GetScoreColor(context.BaselineScore)}; color: white;")">
+                                    @context.BaselineScore%
+                                </MudChip>
+                            </MudTd>
+                            <MudTd Style="text-align: center;">
+                                <MudChip Size="Size.Small"
+                                         Color="@(context.Change > 0 ? Color.Success : context.Change < 0 ? Color.Error : Color.Default)"
+                                         Variant="Variant.Outlined">
+                                    @(context.Change > 0 ? "+" : "")@context.Change%
+                                </MudChip>
+                            </MudTd>
+                            <MudTd Style="text-align: center;">
+                                <MudChip Size="Size.Small" Style="@($"background: {GetScoreColor(context.CompareScore)}; color: white;")">
+                                    @context.CompareScore%
+                                </MudChip>
+                            </MudTd>
+                            <MudTd>
+                                <MudProgressLinear Value="@context.CompareScore" Color="@GetProgressColor(context.CompareScore)" Style="width: 100px;" />
+                            </MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                </MudPaper>
+            </MudItem>
+
+            <!-- Findings Comparison -->
+            <MudItem xs="12" md="6">
+                <MudPaper Class="pa-4" Elevation="2" Style="border-radius: 12px;">
+                    <MudText Typo="Typo.h6" Class="mb-4">Findings Summary - Baseline</MudText>
+                    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">@_baselineRun.StartedAt.ToString("MMM dd, yyyy HH:mm")</MudText>
+                    <div class="d-flex gap-2 flex-wrap">
+                        <MudChip Color="Color.Error" Variant="Variant.Filled">@_baselineFindings.Count(f => f.Severity == FindingSeverity.Critical && !f.IsCompliant) Critical</MudChip>
+                        <MudChip Color="Color.Warning" Variant="Variant.Filled">@_baselineFindings.Count(f => f.Severity == FindingSeverity.High && !f.IsCompliant) High</MudChip>
+                        <MudChip Color="Color.Info" Variant="Variant.Filled">@_baselineFindings.Count(f => f.Severity == FindingSeverity.Medium && !f.IsCompliant) Medium</MudChip>
+                        <MudChip Color="Color.Success" Variant="Variant.Filled">@_baselineFindings.Count(f => f.IsCompliant) Passed</MudChip>
+                    </div>
+                </MudPaper>
+            </MudItem>
+
+            <MudItem xs="12" md="6">
+                <MudPaper Class="pa-4" Elevation="2" Style="border-radius: 12px;">
+                    <MudText Typo="Typo.h6" Class="mb-4">Findings Summary - Compare</MudText>
+                    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">@_compareRun.StartedAt.ToString("MMM dd, yyyy HH:mm")</MudText>
+                    <div class="d-flex gap-2 flex-wrap">
+                        <MudChip Color="Color.Error" Variant="Variant.Filled">@_compareFindings.Count(f => f.Severity == FindingSeverity.Critical && !f.IsCompliant) Critical</MudChip>
+                        <MudChip Color="Color.Warning" Variant="Variant.Filled">@_compareFindings.Count(f => f.Severity == FindingSeverity.High && !f.IsCompliant) High</MudChip>
+                        <MudChip Color="Color.Info" Variant="Variant.Filled">@_compareFindings.Count(f => f.Severity == FindingSeverity.Medium && !f.IsCompliant) Medium</MudChip>
+                        <MudChip Color="Color.Success" Variant="Variant.Filled">@_compareFindings.Count(f => f.IsCompliant) Passed</MudChip>
+                    </div>
+                </MudPaper>
+            </MudItem>
+
+            <!-- New/Resolved Findings -->
+            <MudItem xs="12" md="6">
+                <MudPaper Class="pa-4" Elevation="2" Style="border-radius: 12px;">
+                    <MudText Typo="Typo.h6" Class="mb-4" Style="color: #f44336;">
+                        <MudIcon Icon="@Icons.Material.Filled.Add" /> New Issues (@GetNewFindings().Count())
+                    </MudText>
+                    @if (GetNewFindings().Any())
+                    {
+                        <MudList Dense="true">
+                            @foreach (var finding in GetNewFindings().Take(10))
+                            {
+                                <MudListItem>
+                                    <div class="d-flex align-center gap-2">
+                                        <MudChip Size="Size.Small" Color="@GetSeverityColor(finding.Severity)">@finding.Severity</MudChip>
+                                        <MudText Typo="Typo.body2">@finding.Title</MudText>
+                                    </div>
+                                </MudListItem>
+                            }
+                        </MudList>
+                    }
+                    else
+                    {
+                        <MudAlert Severity="Severity.Success" Dense="true">No new issues found!</MudAlert>
+                    }
+                </MudPaper>
+            </MudItem>
+
+            <MudItem xs="12" md="6">
+                <MudPaper Class="pa-4" Elevation="2" Style="border-radius: 12px;">
+                    <MudText Typo="Typo.h6" Class="mb-4" Style="color: #4CAF50;">
+                        <MudIcon Icon="@Icons.Material.Filled.CheckCircle" /> Resolved Issues (@GetResolvedFindings().Count())
+                    </MudText>
+                    @if (GetResolvedFindings().Any())
+                    {
+                        <MudList Dense="true">
+                            @foreach (var finding in GetResolvedFindings().Take(10))
+                            {
+                                <MudListItem>
+                                    <div class="d-flex align-center gap-2">
+                                        <MudChip Size="Size.Small" Color="@GetSeverityColor(finding.Severity)">@finding.Severity</MudChip>
+                                        <MudText Typo="Typo.body2">@finding.Title</MudText>
+                                    </div>
+                                </MudListItem>
+                            }
+                        </MudList>
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">No issues resolved between assessments</MudText>
+                    }
+                </MudPaper>
+            </MudItem>
+        }
+        else if (_selectedTenantId.HasValue && _tenantAssessments.Count(r => r.Status == AssessmentStatus.Completed) < 2)
+        {
+            <MudItem xs="12">
+                <MudAlert Severity="Severity.Info">
+                    This tenant needs at least 2 completed assessments to enable comparison.
+                    <MudButton Variant="Variant.Text" Color="Color.Primary" Href="@($"/assessments/new?tenantId={_selectedTenantId}")">
+                        Run Another Assessment
+                    </MudButton>
+                </MudAlert>
+            </MudItem>
+        }
+    </MudGrid>
+}
+
+@code {
+    [Parameter]
+    public Guid? TenantId { get; set; }
+
+    private bool _isLoading = true;
+    private List<TenantDto> _tenants = new();
+    private List<AssessmentRunDto> _tenantAssessments = new();
+
+    private Guid? _selectedTenantId;
+    private Guid? _baselineAssessmentId;
+    private Guid? _compareAssessmentId;
+
+    private AssessmentRunDto? _baselineRun;
+    private AssessmentRunDto? _compareRun;
+    private List<FindingDto> _baselineFindings = new();
+    private List<FindingDto> _compareFindings = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadTenantsAsync();
+
+        if (TenantId.HasValue)
+        {
+            _selectedTenantId = TenantId;
+            await LoadTenantAssessmentsAsync();
+        }
+
+        _isLoading = false;
+    }
+
+    private async Task LoadTenantsAsync()
+    {
+        try
+        {
+            _tenants = (await TenantService.GetAllAsync()).ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading tenants: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task LoadTenantAssessmentsAsync()
+    {
+        if (!_selectedTenantId.HasValue) return;
+
+        try
+        {
+            _tenantAssessments = (await AssessmentService.GetRunsByTenantAsync(_selectedTenantId.Value, 20)).ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading assessments: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task LoadComparisonDataAsync()
+    {
+        if (!_baselineAssessmentId.HasValue || !_compareAssessmentId.HasValue) return;
+
+        try
+        {
+            _baselineRun = await AssessmentService.GetRunByIdAsync(_baselineAssessmentId.Value);
+            _compareRun = await AssessmentService.GetRunByIdAsync(_compareAssessmentId.Value);
+            _baselineFindings = (await AssessmentService.GetFindingsAsync(_baselineAssessmentId.Value)).ToList();
+            _compareFindings = (await AssessmentService.GetFindingsAsync(_compareAssessmentId.Value)).ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading comparison data: {ex.Message}", Severity.Error);
+        }
+    }
+
+    // Watch for selection changes
+    private Guid? _lastTenantId;
+    private Guid? _lastBaselineId;
+    private Guid? _lastCompareId;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_selectedTenantId != _lastTenantId)
+        {
+            _lastTenantId = _selectedTenantId;
+            _baselineAssessmentId = null;
+            _compareAssessmentId = null;
+            _baselineRun = null;
+            _compareRun = null;
+            await LoadTenantAssessmentsAsync();
+        }
+
+        if (_baselineAssessmentId != _lastBaselineId || _compareAssessmentId != _lastCompareId)
+        {
+            _lastBaselineId = _baselineAssessmentId;
+            _lastCompareId = _compareAssessmentId;
+            if (_baselineAssessmentId.HasValue && _compareAssessmentId.HasValue)
+            {
+                await LoadComparisonDataAsync();
+            }
+        }
+    }
+
+    private void GoBack()
+    {
+        if (_selectedTenantId.HasValue)
+            NavigationManager.NavigateTo($"/tenants/{_selectedTenantId}");
+        else
+            NavigationManager.NavigateTo("/assessments");
+    }
+
+    private IEnumerable<DomainComparisonItem> GetDomainComparison()
+    {
+        if (_baselineRun?.DomainScores == null || _compareRun?.DomainScores == null)
+            yield break;
+
+        var allDomains = _baselineRun.DomainScores.Keys.Union(_compareRun.DomainScores.Keys);
+
+        foreach (var domain in allDomains)
+        {
+            var baseline = _baselineRun.DomainScores.GetValueOrDefault(domain);
+            var compare = _compareRun.DomainScores.GetValueOrDefault(domain);
+
+            yield return new DomainComparisonItem
+            {
+                Domain = domain,
+                DisplayName = baseline?.DisplayName ?? compare?.DisplayName ?? domain,
+                BaselineScore = baseline?.Score ?? 0,
+                CompareScore = compare?.Score ?? 0,
+                Change = (compare?.Score ?? 0) - (baseline?.Score ?? 0)
+            };
+        }
+    }
+
+    private IEnumerable<FindingDto> GetNewFindings()
+    {
+        var baselineCheckIds = _baselineFindings.Where(f => !f.IsCompliant).Select(f => f.CheckId).ToHashSet();
+        return _compareFindings.Where(f => !f.IsCompliant && !baselineCheckIds.Contains(f.CheckId));
+    }
+
+    private IEnumerable<FindingDto> GetResolvedFindings()
+    {
+        var compareCheckIds = _compareFindings.Where(f => !f.IsCompliant).Select(f => f.CheckId).ToHashSet();
+        return _baselineFindings.Where(f => !f.IsCompliant && !compareCheckIds.Contains(f.CheckId));
+    }
+
+    private string GetScoreColor(int score) => score switch
+    {
+        >= 90 => "#4CAF50",
+        >= 80 => "#8BC34A",
+        >= 70 => "#FFC107",
+        >= 60 => "#FF9800",
+        _ => "#f44336"
+    };
+
+    private Color GetProgressColor(int score) => score switch
+    {
+        >= 90 => Color.Success,
+        >= 80 => Color.Success,
+        >= 70 => Color.Warning,
+        >= 60 => Color.Warning,
+        _ => Color.Error
+    };
+
+    private Color GetSeverityColor(FindingSeverity severity) => severity switch
+    {
+        FindingSeverity.Critical => Color.Error,
+        FindingSeverity.High => Color.Warning,
+        FindingSeverity.Medium => Color.Info,
+        FindingSeverity.Low => Color.Default,
+        _ => Color.Default
+    };
+
+    private class DomainComparisonItem
+    {
+        public string Domain { get; set; } = string.Empty;
+        public string DisplayName { get; set; } = string.Empty;
+        public int BaselineScore { get; set; }
+        public int CompareScore { get; set; }
+        public int Change { get; set; }
+    }
+}

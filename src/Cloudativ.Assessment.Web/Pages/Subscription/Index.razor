@@ -1,0 +1,426 @@
+@page "/subscription"
+@page "/subscription/{TenantId:guid}"
+@attribute [Authorize]
+@inject ISubscriptionService SubscriptionService
+@inject ITenantService TenantService
+@inject NavigationManager NavigationManager
+@inject ISnackbar Snackbar
+@inject IConfiguration Configuration
+
+<PageTitle>Subscription - Cloudativ Assessment</PageTitle>
+
+@if (_isLoading)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+}
+else
+{
+    <div class="mb-4">
+        <MudText Typo="Typo.h5" Style="font-weight: 600; color: #51627A;">Subscription</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">Manage your subscription and view usage</MudText>
+    </div>
+
+    @if (_subscription == null)
+    {
+        <MudAlert Severity="Severity.Info" Class="mb-4">
+            No subscription found. Start your free trial today!
+        </MudAlert>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="StartTrial">
+            Start Free Trial
+        </MudButton>
+    }
+    else
+    {
+        <MudGrid>
+            <!-- Current Plan Card -->
+            <MudItem xs="12" md="6">
+                <MudPaper Class="pa-6" Elevation="2" Style="border-radius: 12px;">
+                    <div class="d-flex justify-space-between align-center mb-4">
+                        <div>
+                            <MudText Typo="Typo.h6">Current Plan</MudText>
+                            <MudChip Size="Size.Small" Color="@GetPlanColor(_subscription.Plan)" Variant="Variant.Filled">
+                                @GetPlanDisplayName(_subscription.Plan)
+                            </MudChip>
+                        </div>
+                        <MudChip Size="Size.Small" Color="@GetStatusColor(_subscription.Status)" Variant="Variant.Filled">
+                            @_subscription.Status
+                        </MudChip>
+                    </div>
+
+                    @if (_subscription.Status == SubscriptionStatus.Trial)
+                    {
+                        <MudAlert Severity="@(_subscription.DaysRemaining <= 3 ? Severity.Warning : Severity.Info)" Dense="true" Class="mb-4">
+                            @if (_subscription.IsTrialExpired)
+                            {
+                                <span>Your trial has expired. Upgrade now to continue using the service.</span>
+                            }
+                            else
+                            {
+                                <span>@_subscription.DaysRemaining days remaining in your trial</span>
+                            }
+                        </MudAlert>
+                    }
+
+                    <MudDivider Class="my-4" />
+
+                    <div class="d-flex justify-space-between mb-2">
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">Start Date</MudText>
+                        <MudText Typo="Typo.body2">@_subscription.StartDate.ToString("MMM dd, yyyy")</MudText>
+                    </div>
+                    <div class="d-flex justify-space-between mb-2">
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">End Date</MudText>
+                        <MudText Typo="Typo.body2">@_subscription.EndDate.ToString("MMM dd, yyyy")</MudText>
+                    </div>
+
+                    @if (_subscription.Plan != SubscriptionPlan.Yearly)
+                    {
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true" Class="mt-4"
+                                   OnClick="ShowUpgradeDialog">
+                            Upgrade Plan
+                        </MudButton>
+                    }
+
+                    @if (_subscription.Plan != SubscriptionPlan.Trial && _subscription.Status == SubscriptionStatus.Active)
+                    {
+                        <MudButton Variant="Variant.Text" Color="Color.Error" FullWidth="true" Class="mt-2"
+                                   OnClick="ShowCancelDialog">
+                            Cancel Subscription
+                        </MudButton>
+                    }
+                </MudPaper>
+            </MudItem>
+
+            <!-- Usage Card -->
+            <MudItem xs="12" md="6">
+                <MudPaper Class="pa-6" Elevation="2" Style="border-radius: 12px;">
+                    <MudText Typo="Typo.h6" Class="mb-4">Monthly Usage</MudText>
+
+                    <div class="d-flex justify-space-between align-center mb-2">
+                        <MudText Typo="Typo.body2">Assessments Used</MudText>
+                        <MudText Typo="Typo.body1" Style="font-weight: 600;">
+                            @if (_usage.AssessmentsLimit == -1)
+                            {
+                                <span>@_usage.AssessmentsUsed / Unlimited</span>
+                            }
+                            else
+                            {
+                                <span>@_usage.AssessmentsUsed / @_usage.AssessmentsLimit</span>
+                            }
+                        </MudText>
+                    </div>
+
+                    @if (_usage.AssessmentsLimit != -1)
+                    {
+                        <MudProgressLinear Value="@_usage.UsagePercentage"
+                                           Color="@(_usage.UsagePercentage >= 90 ? Color.Error : _usage.UsagePercentage >= 70 ? Color.Warning : Color.Primary)"
+                                           Class="mb-4" Size="Size.Medium" Rounded="true" />
+                    }
+                    else
+                    {
+                        <MudProgressLinear Value="0" Color="Color.Success" Class="mb-4" Size="Size.Medium" Rounded="true" />
+                    }
+
+                    @if (!_usage.CanRunAssessment && !string.IsNullOrEmpty(_usage.LimitReachedMessage))
+                    {
+                        <MudAlert Severity="Severity.Warning" Dense="true" Class="mb-4">
+                            @_usage.LimitReachedMessage
+                        </MudAlert>
+                    }
+
+                    <MudDivider Class="my-4" />
+
+                    <div class="d-flex justify-space-between mb-2">
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">Period Start</MudText>
+                        <MudText Typo="Typo.body2">@_usage.PeriodStart.ToString("MMM dd, yyyy")</MudText>
+                    </div>
+                    <div class="d-flex justify-space-between">
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">Period End</MudText>
+                        <MudText Typo="Typo.body2">@_usage.PeriodEnd.ToString("MMM dd, yyyy")</MudText>
+                    </div>
+                </MudPaper>
+            </MudItem>
+
+            <!-- Available Plans -->
+            <MudItem xs="12">
+                <MudText Typo="Typo.h6" Class="mb-4">Available Plans</MudText>
+            </MudItem>
+
+            @foreach (var plan in _availablePlans)
+            {
+                <MudItem xs="12" md="4">
+                    <MudPaper Class="pa-6" Elevation="@(plan.Plan == _subscription.Plan ? 4 : 2)"
+                              Style="@($"border-radius: 12px; {(plan.IsRecommended ? "border: 2px solid #E0FC8E;" : "")}")">
+                        @if (plan.IsRecommended)
+                        {
+                            <MudChip Size="Size.Small" Style="background: #E0FC8E; color: #51627A;" Class="mb-2">
+                                Recommended
+                            </MudChip>
+                        }
+
+                        <MudText Typo="Typo.h5" Style="font-weight: 600;">@plan.Name</MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">@plan.Description</MudText>
+
+                        <MudText Typo="Typo.h4" Style="font-weight: 700; color: #51627A;">
+                            @plan.PriceDisplay
+                        </MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-4">@plan.BillingPeriod</MudText>
+
+                        <MudDivider Class="my-4" />
+
+                        <MudText Typo="Typo.body2" Style="font-weight: 600;" Class="mb-2">@plan.AssessmentsDisplay</MudText>
+
+                        <MudList Dense="true" DisableGutters="true" Class="mb-4">
+                            @foreach (var feature in plan.Features)
+                            {
+                                <MudListItem Dense="true" DisableGutters="true">
+                                    <div class="d-flex align-center">
+                                        <MudIcon Icon="@Icons.Material.Filled.Check" Size="Size.Small" Color="Color.Success" Class="mr-2" />
+                                        <MudText Typo="Typo.body2">@feature</MudText>
+                                    </div>
+                                </MudListItem>
+                            }
+                        </MudList>
+
+                        @if (plan.Plan == _subscription.Plan)
+                        {
+                            <MudButton Variant="Variant.Outlined" Color="Color.Primary" FullWidth="true" Disabled="true">
+                                Current Plan
+                            </MudButton>
+                        }
+                        else if (plan.Plan == SubscriptionPlan.Trial)
+                        {
+                            <MudButton Variant="Variant.Outlined" Color="Color.Secondary" FullWidth="true" Disabled="true">
+                                Trial
+                            </MudButton>
+                        }
+                        else
+                        {
+                            <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true"
+                                       OnClick="@(() => SelectPlan(plan.Plan))">
+                                @(plan.Plan > _subscription.Plan ? "Upgrade" : "Change Plan")
+                            </MudButton>
+                        }
+                    </MudPaper>
+                </MudItem>
+            }
+        </MudGrid>
+    }
+}
+
+<!-- Upgrade Dialog -->
+<MudDialog @bind-Visible="_showUpgradeDialog">
+    <TitleContent>
+        <MudText Typo="Typo.h6">Upgrade Subscription</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudText Class="mb-4">You are about to upgrade to the @GetPlanDisplayName(_selectedPlan) plan.</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">
+            You will be redirected to our secure payment page to complete the upgrade.
+        </MudText>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => _showUpgradeDialog = false)">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ProcessUpgrade">
+            Continue to Payment
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+<!-- Cancel Dialog -->
+<MudDialog @bind-Visible="_showCancelDialog">
+    <TitleContent>
+        <MudText Typo="Typo.h6">Cancel Subscription</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudAlert Severity="Severity.Warning" Class="mb-4">
+            Are you sure you want to cancel your subscription?
+        </MudAlert>
+        <MudText Typo="Typo.body2">
+            Your subscription will remain active until @_subscription?.EndDate.ToString("MMM dd, yyyy").
+            After that, you will lose access to premium features.
+        </MudText>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => _showCancelDialog = false)">Keep Subscription</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Error" OnClick="CancelSubscription">
+            Cancel Subscription
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [Parameter]
+    public Guid? TenantId { get; set; }
+
+    private bool _isLoading = true;
+    private SubscriptionDto? _subscription;
+    private SubscriptionUsageDto _usage = new();
+    private IReadOnlyList<SubscriptionPlanInfo> _availablePlans = new List<SubscriptionPlanInfo>();
+
+    private bool _showUpgradeDialog;
+    private bool _showCancelDialog;
+    private SubscriptionPlan _selectedPlan;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDataAsync();
+    }
+
+    private async Task LoadDataAsync()
+    {
+        _isLoading = true;
+
+        try
+        {
+            // If no TenantId specified, try to get from user's default tenant
+            var effectiveTenantId = TenantId ?? await GetDefaultTenantIdAsync();
+
+            if (effectiveTenantId.HasValue)
+            {
+                _subscription = await SubscriptionService.GetByTenantIdAsync(effectiveTenantId.Value);
+                _usage = await SubscriptionService.GetUsageAsync(effectiveTenantId.Value);
+            }
+
+            _availablePlans = await SubscriptionService.GetAvailablePlansAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading subscription data: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task<Guid?> GetDefaultTenantIdAsync()
+    {
+        var tenants = await TenantService.GetAllAsync();
+        return tenants.FirstOrDefault()?.Id;
+    }
+
+    private async Task StartTrial()
+    {
+        try
+        {
+            var tenantId = TenantId ?? await GetDefaultTenantIdAsync();
+            if (!tenantId.HasValue)
+            {
+                Snackbar.Add("No tenant found. Please create a tenant first.", Severity.Warning);
+                return;
+            }
+
+            await SubscriptionService.CreateTrialAsync(tenantId.Value);
+            Snackbar.Add("Free trial started successfully!", Severity.Success);
+            await LoadDataAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error starting trial: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private void ShowUpgradeDialog()
+    {
+        _selectedPlan = _subscription?.Plan == SubscriptionPlan.Trial ? SubscriptionPlan.Monthly : SubscriptionPlan.Yearly;
+        _showUpgradeDialog = true;
+    }
+
+    private void ShowCancelDialog()
+    {
+        _showCancelDialog = true;
+    }
+
+    private void SelectPlan(SubscriptionPlan plan)
+    {
+        _selectedPlan = plan;
+        _showUpgradeDialog = true;
+    }
+
+    private async Task ProcessUpgrade()
+    {
+        try
+        {
+            _showUpgradeDialog = false;
+
+            var tenantId = TenantId ?? _subscription?.TenantId;
+            if (!tenantId.HasValue)
+            {
+                Snackbar.Add("Tenant not found", Severity.Error);
+                return;
+            }
+
+            var baseUrl = NavigationManager.BaseUri.TrimEnd('/');
+            var successUrl = $"{baseUrl}/subscription/success?tenantId={tenantId}";
+            var cancelUrl = $"{baseUrl}/subscription?tenantId={tenantId}";
+
+            var result = await SubscriptionService.CreateCheckoutSessionAsync(
+                tenantId.Value,
+                _selectedPlan,
+                successUrl,
+                cancelUrl);
+
+            if (result.Success && !string.IsNullOrEmpty(result.SessionUrl))
+            {
+                NavigationManager.NavigateTo(result.SessionUrl, forceLoad: true);
+            }
+            else
+            {
+                Snackbar.Add($"Error creating checkout session: {result.ErrorMessage}", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error processing upgrade: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task CancelSubscription()
+    {
+        try
+        {
+            _showCancelDialog = false;
+
+            var tenantId = TenantId ?? _subscription?.TenantId;
+            if (!tenantId.HasValue)
+            {
+                Snackbar.Add("Tenant not found", Severity.Error);
+                return;
+            }
+
+            await SubscriptionService.CancelAsync(tenantId.Value);
+            Snackbar.Add("Subscription cancelled successfully", Severity.Info);
+            await LoadDataAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error cancelling subscription: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private string GetPlanDisplayName(SubscriptionPlan plan) => plan switch
+    {
+        SubscriptionPlan.Trial => "Free Trial",
+        SubscriptionPlan.Monthly => "Monthly",
+        SubscriptionPlan.Yearly => "Yearly",
+        _ => plan.ToString()
+    };
+
+    private Color GetPlanColor(SubscriptionPlan plan) => plan switch
+    {
+        SubscriptionPlan.Trial => Color.Info,
+        SubscriptionPlan.Monthly => Color.Primary,
+        SubscriptionPlan.Yearly => Color.Success,
+        _ => Color.Default
+    };
+
+    private Color GetStatusColor(SubscriptionStatus status) => status switch
+    {
+        SubscriptionStatus.Active => Color.Success,
+        SubscriptionStatus.Trial => Color.Info,
+        SubscriptionStatus.Expired => Color.Error,
+        SubscriptionStatus.Cancelled => Color.Warning,
+        SubscriptionStatus.PastDue => Color.Error,
+        _ => Color.Default
+    };
+}

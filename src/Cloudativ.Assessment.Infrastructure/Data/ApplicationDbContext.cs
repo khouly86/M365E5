@@ -17,6 +17,9 @@ public class ApplicationDbContext : DbContext, IDataProtectionKeyContext
     public DbSet<RawSnapshot> RawSnapshots => Set<RawSnapshot>();
     public DbSet<AppUser> AppUsers => Set<AppUser>();
     public DbSet<TenantUserAccess> TenantUserAccess => Set<TenantUserAccess>();
+    public DbSet<UserDomainAccess> UserDomainAccess => Set<UserDomainAccess>();
+    public DbSet<Subscription> Subscriptions => Set<Subscription>();
+    public DbSet<GovernanceAnalysis> GovernanceAnalyses => Set<GovernanceAnalysis>();
     public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -132,6 +135,60 @@ public class ApplicationDbContext : DbContext, IDataProtectionKeyContext
             entity.HasOne(e => e.Tenant)
                 .WithMany()
                 .HasForeignKey(e => e.TenantId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // UserDomainAccess configuration (for Domain-level admins)
+        modelBuilder.Entity<UserDomainAccess>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => new { e.AppUserId, e.Domain }).IsUnique();
+
+            entity.HasOne(e => e.AppUser)
+                .WithMany(u => u.DomainAccess)
+                .HasForeignKey(e => e.AppUserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // Subscription configuration
+        modelBuilder.Entity<Subscription>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.TenantId).IsUnique();
+            entity.HasIndex(e => e.StripeCustomerId);
+            entity.HasIndex(e => e.StripeSubscriptionId);
+            entity.Property(e => e.StripeCustomerId).HasMaxLength(256);
+            entity.Property(e => e.StripeSubscriptionId).HasMaxLength(256);
+            entity.Property(e => e.StripePriceId).HasMaxLength(256);
+            entity.Property(e => e.MonthlyPrice).HasPrecision(18, 2);
+            entity.Property(e => e.YearlyPrice).HasPrecision(18, 2);
+
+            entity.HasOne(e => e.Tenant)
+                .WithOne(t => t.Subscription)
+                .HasForeignKey<Subscription>(e => e.TenantId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // GovernanceAnalysis configuration
+        modelBuilder.Entity<GovernanceAnalysis>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.TenantId);
+            entity.HasIndex(e => e.AssessmentRunId);
+            entity.HasIndex(e => new { e.TenantId, e.Standard });
+            entity.HasIndex(e => new { e.AssessmentRunId, e.Standard }).IsUnique();
+            entity.Property(e => e.AiModelUsed).HasMaxLength(64);
+            entity.Property(e => e.StandardDocumentVersion).HasMaxLength(128);
+            entity.Property(e => e.ErrorMessage).HasMaxLength(2048);
+
+            entity.HasOne(e => e.Tenant)
+                .WithMany(t => t.GovernanceAnalyses)
+                .HasForeignKey(e => e.TenantId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.AssessmentRun)
+                .WithMany()
+                .HasForeignKey(e => e.AssessmentRunId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
     }

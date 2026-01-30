@@ -13,4 +13,6 @@ public interface ITenantService
     Task<TenantOnboardingDto> ValidateConnectionAsync(Guid tenantId, string clientId, string clientSecret, CancellationToken cancellationToken = default);
     Task<TenantOnboardingDto> CompleteOnboardingAsync(Guid tenantId, string clientId, string clientSecret, CancellationToken cancellationToken = default);
     Task UpdateOnboardingStatusAsync(Guid id, OnboardingStatus status, CancellationToken cancellationToken = default);
+    Task<ConnectionTestResult> TestConnectionAsync(string azureTenantId, string clientId, string clientSecret, CancellationToken cancellationToken = default);
+    Task<ConnectionTestResult> TestConnectionWithDelegatedAuthAsync(string azureTenantId, CancellationToken cancellationToken = default);
 }

@@ -8,6 +8,7 @@ using Hangfire;
 using Hangfire.MemoryStorage;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Serilog;
@@ -50,6 +51,9 @@ public static class DependencyInjection
         // Register Unit of Work and Repositories
         services.AddScoped<IUnitOfWork, UnitOfWork>();
 
+        // Register Memory Cache
+        services.AddMemoryCache();
+
         // Register Services
         services.AddScoped<IEncryptionService, EncryptionService>();
         services.AddScoped<ITenantService, TenantService>();
@@ -57,10 +61,33 @@ public static class DependencyInjection
         services.AddScoped<IAssessmentService, AssessmentService>();
         services.AddScoped<IGraphClientFactory, GraphClientFactory>();
         services.AddScoped<IAssessmentEngine, AssessmentEngine>();
+        services.AddScoped<IReportService, ReportService>();
+        services.AddScoped<IUserService, UserService>();
+        services.AddScoped<IStripeService, StripeService>();
+        services.AddScoped<ISubscriptionService, SubscriptionService>();
+
+        // Register Governance Services
+        services.AddHttpClient<IOpenAiService, OpenAiService>(client =>
+        {
+            client.Timeout = TimeSpan.FromMinutes(5); // OpenAI can take a while for large requests
+        });
+        services.AddHttpClient<IStandardDocumentService, StandardDocumentService>(client =>
+        {
+            client.Timeout = TimeSpan.FromMinutes(2);
+        });
+        services.AddScoped<IGovernanceService, GovernanceService>();
+        services.AddScoped<IGovernanceExportService, GovernanceExportService>();
 
         // Register Assessment Modules
         services.AddScoped<IAssessmentModule, IamAssessmentModule>();
         services.AddScoped<IAssessmentModule, DlpAssessmentModule>();
+        services.AddScoped<IAssessmentModule, PrivilegedAccessAssessmentModule>();
+        services.AddScoped<IAssessmentModule, DeviceEndpointAssessmentModule>();
+        services.AddScoped<IAssessmentModule, ExchangeEmailSecurityAssessmentModule>();
+        services.AddScoped<IAssessmentModule, MicrosoftDefenderAssessmentModule>();
+        services.AddScoped<IAssessmentModule, AuditLoggingAssessmentModule>();
+        services.AddScoped<IAssessmentModule, AppGovernanceAssessmentModule>();
+        services.AddScoped<IAssessmentModule, CollaborationSecurityAssessmentModule>();
 
         // Configure Hangfire
         services.AddHangfire(config =>

@@ -27,10 +27,14 @@ else
                 <MudText Typo="Typo.body2" Color="Color.Secondary">@_tenant.Domain</MudText>
             </div>
         </div>
-        <div>
+        <div class="d-flex gap-2">
             <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Edit"
-                       OnClick="EditTenant" Class="mr-2">
+                       OnClick="EditTenant">
                 Edit
+            </MudButton>
+            <MudButton Variant="Variant.Outlined" Color="Color.Secondary" StartIcon="@Icons.Material.Filled.Compare"
+                       OnClick="CompareAssessments" Disabled="@(_tenant.TotalAssessments < 2)">
+                Compare
             </MudButton>
             <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.PlayArrow"
                        OnClick="StartAssessment" Disabled="@(_tenant.OnboardingStatus != OnboardingStatus.Active && _tenant.OnboardingStatus != OnboardingStatus.Validated)">
@@ -107,6 +111,128 @@ else
                 }
             </MudPaper>
         </MudItem>
+
+        <!-- M365 Resources Overview -->
+        @if (_resourceStats != null && _resourceStats.TotalUsers > 0)
+        {
+            <MudItem xs="12">
+                <MudPaper Class="pa-4" Elevation="2" Style="border-radius: 12px;">
+                    <MudText Typo="Typo.h6" Class="mb-4">M365 Resources</MudText>
+                    <MudGrid Spacing="2">
+                        <!-- Users -->
+                        <MudItem xs="6" sm="4" md="2">
+                            <div class="resource-stat-card">
+                                <MudIcon Icon="@Icons.Material.Filled.People" Style="color: #51627A;" />
+                                <MudText Typo="Typo.h6" Style="font-weight: 600;">@_resourceStats.TotalUsers.ToString("N0")</MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">Users</MudText>
+                            </div>
+                        </MudItem>
+
+                        <!-- Guests -->
+                        <MudItem xs="6" sm="4" md="2">
+                            <div class="resource-stat-card">
+                                <MudIcon Icon="@Icons.Material.Filled.PersonAdd" Style="color: #2196F3;" />
+                                <MudText Typo="Typo.h6" Style="font-weight: 600;">@_resourceStats.GuestUsers.ToString("N0")</MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">Guests</MudText>
+                            </div>
+                        </MudItem>
+
+                        <!-- Admins -->
+                        <MudItem xs="6" sm="4" md="2">
+                            <div class="resource-stat-card">
+                                <MudIcon Icon="@Icons.Material.Filled.AdminPanelSettings" Style="color: #EF7348;" />
+                                <MudText Typo="Typo.h6" Style="font-weight: 600;">@_resourceStats.AdminUsers</MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">Admins (@_resourceStats.GlobalAdmins GA)</MudText>
+                            </div>
+                        </MudItem>
+
+                        <!-- Apps -->
+                        <MudItem xs="6" sm="4" md="2">
+                            <div class="resource-stat-card">
+                                <MudIcon Icon="@Icons.Material.Filled.Apps" Style="color: #9C27B0;" />
+                                <MudText Typo="Typo.h6" Style="font-weight: 600;">@_resourceStats.EnterpriseApps.ToString("N0")</MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">Enterprise Apps</MudText>
+                            </div>
+                        </MudItem>
+
+                        <!-- Devices -->
+                        <MudItem xs="6" sm="4" md="2">
+                            <div class="resource-stat-card">
+                                <MudIcon Icon="@Icons.Material.Filled.Devices" Style="color: #00BCD4;" />
+                                <MudText Typo="Typo.h6" Style="font-weight: 600;">@_resourceStats.TotalDevices.ToString("N0")</MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">Devices</MudText>
+                            </div>
+                        </MudItem>
+
+                        <!-- CA Policies -->
+                        <MudItem xs="6" sm="4" md="2">
+                            <div class="resource-stat-card">
+                                <MudIcon Icon="@Icons.Material.Filled.Policy" Style="color: #FF9800;" />
+                                <MudText Typo="Typo.h6" Style="font-weight: 600;">@_resourceStats.ConditionalAccessPolicies</MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">CA Policies (@_resourceStats.EnabledCaPolicies enabled)</MudText>
+                            </div>
+                        </MudItem>
+
+                        <!-- Groups -->
+                        <MudItem xs="6" sm="4" md="2">
+                            <div class="resource-stat-card">
+                                <MudIcon Icon="@Icons.Material.Filled.Groups" Style="color: #3F51B5;" />
+                                <MudText Typo="Typo.h6" Style="font-weight: 600;">@_resourceStats.TotalGroups.ToString("N0")</MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">Groups</MudText>
+                            </div>
+                        </MudItem>
+
+                        <!-- Mailboxes -->
+                        <MudItem xs="6" sm="4" md="2">
+                            <div class="resource-stat-card">
+                                <MudIcon Icon="@Icons.Material.Filled.Email" Style="color: #0078D4;" />
+                                <MudText Typo="Typo.h6" Style="font-weight: 600;">@_resourceStats.Mailboxes.ToString("N0")</MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">Mailboxes</MudText>
+                            </div>
+                        </MudItem>
+
+                        <!-- SharePoint Sites -->
+                        <MudItem xs="6" sm="4" md="2">
+                            <div class="resource-stat-card">
+                                <MudIcon Icon="@Icons.Material.Filled.Folder" Style="color: #038387;" />
+                                <MudText Typo="Typo.h6" Style="font-weight: 600;">@_resourceStats.SharePointSites.ToString("N0")</MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">SharePoint Sites</MudText>
+                            </div>
+                        </MudItem>
+
+                        <!-- Teams -->
+                        <MudItem xs="6" sm="4" md="2">
+                            <div class="resource-stat-card">
+                                <MudIcon Icon="@Icons.Material.Filled.Group" Style="color: #6264A7;" />
+                                <MudText Typo="Typo.h6" Style="font-weight: 600;">@_resourceStats.TeamsCount.ToString("N0")</MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">Teams</MudText>
+                            </div>
+                        </MudItem>
+
+                        <!-- App Registrations -->
+                        <MudItem xs="6" sm="4" md="2">
+                            <div class="resource-stat-card">
+                                <MudIcon Icon="@Icons.Material.Filled.AppRegistration" Style="color: #673AB7;" />
+                                <MudText Typo="Typo.h6" Style="font-weight: 600;">@_resourceStats.AppRegistrations.ToString("N0")</MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">App Registrations</MudText>
+                            </div>
+                        </MudItem>
+
+                        <!-- Risky Users -->
+                        @if (_resourceStats.RiskyUsers > 0)
+                        {
+                            <MudItem xs="6" sm="4" md="2">
+                                <div class="resource-stat-card" style="border-color: #f44336;">
+                                    <MudIcon Icon="@Icons.Material.Filled.Warning" Style="color: #f44336;" />
+                                    <MudText Typo="Typo.h6" Style="font-weight: 600; color: #f44336;">@_resourceStats.RiskyUsers</MudText>
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">Risky Users</MudText>
+                                </div>
+                            </MudItem>
+                        }
+                    </MudGrid>
+                </MudPaper>
+            </MudItem>
+        }
 
         <!-- Score Trend Chart -->
         <MudItem xs="12" md="8">
@@ -221,22 +347,23 @@ else
                             <MudTh>Date</MudTh>
                             <MudTh>Status</MudTh>
                             <MudTh>Score</MudTh>
+                            <MudTh>Change</MudTh>
                             <MudTh>Duration</MudTh>
                             <MudTh>Initiated By</MudTh>
                             <MudTh>Actions</MudTh>
                         </HeaderContent>
-                        <RowTemplate>
-                            <MudTd>@context.StartedAt.ToString("MMM dd, yyyy HH:mm")</MudTd>
+                        <RowTemplate Context="assessment">
+                            <MudTd>@assessment.StartedAt.ToString("MMM dd, yyyy HH:mm")</MudTd>
                             <MudTd>
-                                <MudChip Size="Size.Small" Color="@GetStatusColor(context.Status)" Variant="Variant.Filled">
-                                    @context.Status
+                                <MudChip Size="Size.Small" Color="@GetStatusColor(assessment.Status)" Variant="Variant.Filled">
+                                    @assessment.Status
                                 </MudChip>
                             </MudTd>
                             <MudTd>
-                                @if (context.OverallScore.HasValue)
+                                @if (assessment.OverallScore.HasValue)
                                 {
-                                    <MudChip Size="Size.Small" Style="@($"background: {GetScoreColor(context.OverallScore.Value)}; color: white;")">
-                                        @context.OverallScore%
+                                    <MudChip Size="Size.Small" Style="@($"background: {GetScoreColor(assessment.OverallScore.Value)}; color: white;")">
+                                        @assessment.OverallScore%
                                     </MudChip>
                                 }
                                 else
@@ -244,13 +371,35 @@ else
                                     <span>-</span>
                                 }
                             </MudTd>
-                            <MudTd>@(context.Duration?.ToString(@"mm\:ss") ?? "-")</MudTd>
-                            <MudTd>@(context.InitiatedBy ?? "System")</MudTd>
+                            <MudTd>
+                                @{
+                                    var idx = _dashboard.RecentAssessments.IndexOf(assessment);
+                                    var prevAssessment = idx < _dashboard.RecentAssessments.Count - 1 ? _dashboard.RecentAssessments[idx + 1] : null;
+                                    if (assessment.OverallScore.HasValue && prevAssessment?.OverallScore.HasValue == true)
+                                    {
+                                        var change = assessment.OverallScore.Value - prevAssessment.OverallScore.Value;
+                                        <div class="d-flex align-center">
+                                            <MudIcon Icon="@(change > 0 ? Icons.Material.Filled.TrendingUp : change < 0 ? Icons.Material.Filled.TrendingDown : Icons.Material.Filled.TrendingFlat)"
+                                                     Color="@(change > 0 ? Color.Success : change < 0 ? Color.Error : Color.Default)"
+                                                     Size="Size.Small" />
+                                            <MudText Typo="Typo.body2" Style="@($"color: {(change > 0 ? "#4CAF50" : change < 0 ? "#f44336" : "#666")}; margin-left: 4px;")">
+                                                @(change > 0 ? "+" : "")@change%
+                                            </MudText>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <span>-</span>
+                                    }
+                                }
+                            </MudTd>
+                            <MudTd>@(assessment.Duration?.ToString(@"mm\:ss") ?? "-")</MudTd>
+                            <MudTd>@(assessment.InitiatedBy ?? "System")</MudTd>
                             <MudTd>
                                 <MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="Size.Small"
-                                               OnClick="@(() => NavigationManager.NavigateTo($"/assessments/{context.Id}"))" />
+                                               OnClick="@(() => NavigationManager.NavigateTo($"/assessments/{assessment.Id}"))" />
                                 <MudIconButton Icon="@Icons.Material.Filled.Download" Size="Size.Small"
-                                               OnClick="@(() => DownloadReport(context.Id))" />
+                                               OnClick="@(() => DownloadReport(assessment.Id))" />
                             </MudTd>
                         </RowTemplate>
                     </MudTable>
@@ -266,6 +415,23 @@ else
     </MudGrid>
 }
 
+<style>
+    .resource-stat-card {
+        background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+        padding: 12px;
+        text-align: center;
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    .resource-stat-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        border-color: #E0FC8E;
+    }
+</style>
+
 @code {
     [Parameter]
     public Guid TenantId { get; set; }
@@ -273,6 +439,7 @@ else
     private bool _isLoading = true;
     private TenantDto? _tenant;
     private TenantDashboardDto _dashboard = new();
+    private ResourceStatisticsDto? _resourceStats;
 
     private List<ChartSeries> _scoreTrendSeries = new();
     private string[] _scoreTrendLabels = Array.Empty<string>();
@@ -292,7 +459,13 @@ else
             _tenant = await TenantService.GetByIdAsync(TenantId);
             if (_tenant != null)
             {
-                _dashboard = await DashboardService.GetTenantDashboardAsync(TenantId);
+                var dashboardTask = DashboardService.GetTenantDashboardAsync(TenantId);
+                var resourceStatsTask = DashboardService.GetResourceStatisticsAsync(TenantId);
+
+                await Task.WhenAll(dashboardTask, resourceStatsTask);
+
+                _dashboard = await dashboardTask;
+                _resourceStats = await resourceStatsTask;
                 PrepareChartData();
             }
         }
@@ -330,6 +503,11 @@ else
     private void StartAssessment()
     {
         NavigationManager.NavigateTo($"/assessments/new?tenantId={TenantId}");
+    }
+
+    private void CompareAssessments()
+    {
+        NavigationManager.NavigateTo($"/assessments/compare/{TenantId}");
     }
 
     private async Task DownloadReport(Guid runId)
