@@ -3,6 +3,7 @@ using Azure.Core;
 using Azure.Identity;
 using Cloudativ.Assessment.Domain.Interfaces;
 using Microsoft.Graph;
+using Microsoft.Graph.Models.ODataErrors;
 using Microsoft.Extensions.Logging;
 
 namespace Cloudativ.Assessment.Infrastructure.Graph;
@@ -113,15 +114,22 @@ public class GraphClientWrapper : IGraphClientWrapper
 
     public async Task<bool> TestConnectionAsync(CancellationToken cancellationToken = default)
     {
+        // First, validate credentials by obtaining an access token
+        var token = await GetAccessTokenAsync(cancellationToken);
+        if (string.IsNullOrEmpty(token))
+            return false;
+
+        // Credentials are valid. Try Organization.GetAsync for org info,
+        // but don't fail if it's just a missing permission (403).
         try
         {
             var org = await _graphClient.Organization.GetAsync(cancellationToken: cancellationToken);
             return org?.Value?.Any() == true;
         }
-        catch (Exception ex)
+        catch (ODataError ex) when (ex.ResponseStatusCode == 403)
         {
-            _logger.LogWarning(ex, "Connection test failed");
-            return false;
+            _logger.LogInformation("Organization.Read.All permission not granted (403), but credentials are valid");
+            return true;
         }
     }
 

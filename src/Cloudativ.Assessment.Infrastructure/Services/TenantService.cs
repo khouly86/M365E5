@@ -5,6 +5,7 @@ using Cloudativ.Assessment.Domain.Enums;
 using Cloudativ.Assessment.Domain.Interfaces;
 using Cloudativ.Assessment.Infrastructure.Graph;
 using Microsoft.Extensions.Logging;
+using Microsoft.Graph.Models.ODataErrors;
 
 namespace Cloudativ.Assessment.Infrastructure.Services;
 
@@ -428,6 +429,25 @@ public class TenantService : ITenantService
             {
                 Success = false,
                 ErrorCode = "AUTH_FAILED",
+                ErrorMessage = errorMessage,
+                RequiredPermissions = RequiredPermissions
+            };
+        }
+        catch (ODataError ex)
+        {
+            _logger.LogError(ex, "Graph API error during connection test for tenant {TenantId}", azureTenantId);
+
+            var errorMessage = ex.ResponseStatusCode switch
+            {
+                401 => "Authentication failed. The credentials may be invalid or the app registration may not exist in this tenant.",
+                403 => "Insufficient privileges. The app registration is missing required permissions. Please grant admin consent for the required permissions in Azure Portal > App registrations > API permissions.",
+                _ => $"Microsoft Graph API error ({ex.ResponseStatusCode}): {ex.Message}"
+            };
+
+            return new ConnectionTestResult
+            {
+                Success = false,
+                ErrorCode = $"GRAPH_{ex.ResponseStatusCode}",
                 ErrorMessage = errorMessage,
                 RequiredPermissions = RequiredPermissions
             };
