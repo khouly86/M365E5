@@ -1,0 +1,293 @@
+@page "/inventory/defender/endpoint"
+@attribute [Authorize]
+@inject IInventoryService InventoryService
+@inject ITenantService TenantService
+@inject ISnackbar Snackbar
+
+<PageTitle>Defender for Endpoint - Cloudativ Assessment</PageTitle>
+
+<div class="d-flex justify-space-between align-center mb-4">
+    <div>
+        <MudText Typo="Typo.h5" Style="font-weight: 600; color: #51627A;">Defender for Endpoint</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">Device protection, threat detection, and vulnerability management</MudText>
+    </div>
+    <MudSelect T="Guid?" Label="Tenant" Value="_selectedTenantId" Dense="true"
+               Style="min-width: 200px;" Variant="Variant.Outlined"
+               ValueChanged="@(async (Guid? v) => { _selectedTenantId = v; await LoadDataAsync(); })">
+        @foreach (var tenant in _tenants)
+        {
+            <MudSelectItem Value="@((Guid?)tenant.Id)">@tenant.Name</MudSelectItem>
+        }
+    </MudSelect>
+</div>
+
+@if (_isLoading)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+}
+else if (_data == null)
+{
+    <MudAlert Severity="Severity.Info" Class="mb-4">
+        No Defender for Endpoint data available. Run an inventory collection to gather this data.
+    </MudAlert>
+}
+else
+{
+    <!-- Onboarding Overview -->
+    <MudText Typo="Typo.h6" Class="mb-3" Style="color: #51627A;">Device Onboarding</MudText>
+    <MudGrid Class="mb-4">
+        <MudItem xs="6" sm="3">
+            <MudPaper Class="pa-4" Elevation="1" Style="border-radius: 12px;">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Onboarded Devices</MudText>
+                <MudText Typo="Typo.h4" Style="font-weight: 600; color: #4CAF50;">@_data.OnboardedDeviceCount</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">of @_data.TotalManagedDeviceCount managed</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="6" sm="3">
+            <MudPaper Class="pa-4" Elevation="1" Style="border-radius: 12px;">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Coverage</MudText>
+                <MudText Typo="Typo.h4" Style="font-weight: 600;">@(_data.OnboardingCoverage.ToString("P0"))</MudText>
+                <MudProgressLinear Color="@(_data.OnboardingCoverage >= 0.9 ? Color.Success : _data.OnboardingCoverage >= 0.7 ? Color.Warning : Color.Error)"
+                                   Value="@(_data.OnboardingCoverage * 100)" Class="mt-2" />
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="6" sm="3">
+            <MudPaper Class="pa-4" Elevation="1" Style="border-radius: 12px;">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Active Sensors</MudText>
+                <MudText Typo="Typo.h4" Style="font-weight: 600; color: #4CAF50;">@_data.ActiveSensors</MudText>
+                @if (_data.InactiveSensors > 0)
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Warning">@_data.InactiveSensors inactive</MudText>
+                }
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="6" sm="3">
+            <MudPaper Class="pa-4" Elevation="1" Style="border-radius: 12px;">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Active Alerts</MudText>
+                <MudText Typo="Typo.h4" Style="@($"font-weight: 600; color: {(_data.ActiveAlerts > 0 ? "#f44336" : "#4CAF50")};")">@_data.ActiveAlerts</MudText>
+                @if (_data.HighSeverityAlerts > 0)
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Error">@_data.HighSeverityAlerts high severity</MudText>
+                }
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    <!-- Device Distribution by Platform -->
+    <MudGrid Class="mb-4">
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-4" Elevation="2" Style="border-radius: 12px;">
+                <MudText Typo="Typo.subtitle1" Style="font-weight: 600;" Class="mb-3">Devices by Platform</MudText>
+                <MudSimpleTable Dense="true" Hover="true">
+                    <thead>
+                        <tr>
+                            <th>Platform</th>
+                            <th style="text-align: right;">Onboarded</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><MudIcon Icon="@Icons.Custom.Brands.Microsoft" Size="Size.Small" Class="mr-2" />Windows</td>
+                            <td style="text-align: right;">@_data.WindowsOnboarded</td>
+                        </tr>
+                        <tr>
+                            <td><MudIcon Icon="@Icons.Custom.Brands.Apple" Size="Size.Small" Class="mr-2" />macOS</td>
+                            <td style="text-align: right;">@_data.MacOsOnboarded</td>
+                        </tr>
+                        <tr>
+                            <td><MudIcon Icon="@Icons.Material.Filled.Computer" Size="Size.Small" Class="mr-2" />Linux</td>
+                            <td style="text-align: right;">@_data.LinuxOnboarded</td>
+                        </tr>
+                        <tr>
+                            <td><MudIcon Icon="@Icons.Material.Filled.PhoneAndroid" Size="Size.Small" Class="mr-2" />Mobile</td>
+                            <td style="text-align: right;">@_data.MobileOnboarded</td>
+                        </tr>
+                    </tbody>
+                </MudSimpleTable>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-4" Elevation="2" Style="border-radius: 12px;">
+                <MudText Typo="Typo.subtitle1" Style="font-weight: 600;" Class="mb-3">Device Risk Distribution</MudText>
+                <MudSimpleTable Dense="true" Hover="true">
+                    <thead>
+                        <tr>
+                            <th>Risk Level</th>
+                            <th style="text-align: right;">Devices</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><MudChip Size="Size.Small" Color="Color.Error">High</MudChip></td>
+                            <td style="text-align: right;">@_data.HighRiskDevices</td>
+                        </tr>
+                        <tr>
+                            <td><MudChip Size="Size.Small" Color="Color.Warning">Medium</MudChip></td>
+                            <td style="text-align: right;">@_data.MediumRiskDevices</td>
+                        </tr>
+                        <tr>
+                            <td><MudChip Size="Size.Small" Color="Color.Success">Low</MudChip></td>
+                            <td style="text-align: right;">@_data.LowRiskDevices</td>
+                        </tr>
+                        <tr>
+                            <td><MudChip Size="Size.Small" Color="Color.Default">No Info</MudChip></td>
+                            <td style="text-align: right;">@_data.NoRiskInfoDevices</td>
+                        </tr>
+                    </tbody>
+                </MudSimpleTable>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    <!-- Protection Features -->
+    <MudText Typo="Typo.h6" Class="mb-3" Style="color: #51627A;">Protection Features</MudText>
+    <MudPaper Class="pa-4 mb-4" Elevation="2" Style="border-radius: 12px;">
+        <MudGrid>
+            <MudItem xs="6" sm="4" md="3">
+                <div class="d-flex align-center">
+                    <MudIcon Icon="@(_data.TamperProtectionEnabled ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.Cancel)"
+                             Color="@(_data.TamperProtectionEnabled ? Color.Success : Color.Error)" Class="mr-2" />
+                    <MudText Typo="Typo.body2">Tamper Protection</MudText>
+                </div>
+            </MudItem>
+            <MudItem xs="6" sm="4" md="3">
+                <div class="d-flex align-center">
+                    <MudIcon Icon="@(_data.EdrInBlockMode ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.Cancel)"
+                             Color="@(_data.EdrInBlockMode ? Color.Success : Color.Error)" Class="mr-2" />
+                    <MudText Typo="Typo.body2">EDR in Block Mode</MudText>
+                </div>
+            </MudItem>
+            <MudItem xs="6" sm="4" md="3">
+                <div class="d-flex align-center">
+                    <MudIcon Icon="@(_data.NetworkProtectionEnabled ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.Cancel)"
+                             Color="@(_data.NetworkProtectionEnabled ? Color.Success : Color.Error)" Class="mr-2" />
+                    <MudText Typo="Typo.body2">Network Protection</MudText>
+                </div>
+            </MudItem>
+            <MudItem xs="6" sm="4" md="3">
+                <div class="d-flex align-center">
+                    <MudIcon Icon="@(_data.WebProtectionEnabled ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.Cancel)"
+                             Color="@(_data.WebProtectionEnabled ? Color.Success : Color.Error)" Class="mr-2" />
+                    <MudText Typo="Typo.body2">Web Protection</MudText>
+                </div>
+            </MudItem>
+            <MudItem xs="6" sm="4" md="3">
+                <div class="d-flex align-center">
+                    <MudIcon Icon="@(_data.CloudProtectionEnabled ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.Cancel)"
+                             Color="@(_data.CloudProtectionEnabled ? Color.Success : Color.Error)" Class="mr-2" />
+                    <MudText Typo="Typo.body2">Cloud Protection</MudText>
+                </div>
+            </MudItem>
+            <MudItem xs="6" sm="4" md="3">
+                <div class="d-flex align-center">
+                    <MudIcon Icon="@(_data.RealTimeProtectionEnabled ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.Cancel)"
+                             Color="@(_data.RealTimeProtectionEnabled ? Color.Success : Color.Error)" Class="mr-2" />
+                    <MudText Typo="Typo.body2">Real-Time Protection</MudText>
+                </div>
+            </MudItem>
+            <MudItem xs="6" sm="4" md="3">
+                <div class="d-flex align-center">
+                    <MudIcon Icon="@(_data.PuaProtectionEnabled ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.Cancel)"
+                             Color="@(_data.PuaProtectionEnabled ? Color.Success : Color.Error)" Class="mr-2" />
+                    <MudText Typo="Typo.body2">PUA Protection</MudText>
+                </div>
+            </MudItem>
+            <MudItem xs="6" sm="4" md="3">
+                <div class="d-flex align-center">
+                    <MudIcon Icon="@(_data.AsrRulesConfigured ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.Cancel)"
+                             Color="@(_data.AsrRulesConfigured ? Color.Success : Color.Error)" Class="mr-2" />
+                    <MudText Typo="Typo.body2">ASR Rules (@_data.AsrRulesCount)</MudText>
+                </div>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    <!-- Vulnerability Management -->
+    <MudText Typo="Typo.h6" Class="mb-3" Style="color: #51627A;">Threat & Vulnerability Management</MudText>
+    <MudGrid Class="mb-4">
+        <MudItem xs="6" sm="3">
+            <MudPaper Class="pa-4" Elevation="1" Style="border-radius: 12px;">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Exposure Score</MudText>
+                <MudText Typo="Typo.h4" Style="font-weight: 600;">@(_data.ExposureScore?.ToString("F1") ?? "N/A")</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="6" sm="3">
+            <MudPaper Class="pa-4" Elevation="1" Style="border-radius: 12px;">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Total Vulnerabilities</MudText>
+                <MudText Typo="Typo.h4" Style="font-weight: 600;">@_data.VulnerabilityCount</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="6" sm="3">
+            <MudPaper Class="pa-4" Elevation="1" Style="border-radius: 12px; border-left: 3px solid #f44336;">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Critical</MudText>
+                <MudText Typo="Typo.h4" Style="font-weight: 600; color: #f44336;">@_data.CriticalVulnerabilities</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="6" sm="3">
+            <MudPaper Class="pa-4" Elevation="1" Style="border-radius: 12px; border-left: 3px solid #ff9800;">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">High</MudText>
+                <MudText Typo="Typo.h4" Style="font-weight: 600; color: #ff9800;">@_data.HighVulnerabilities</MudText>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    @if (_data.CollectedAt.HasValue)
+    {
+        <MudText Typo="Typo.caption" Color="Color.Secondary">
+            Last collected: @_data.CollectedAt.Value.ToString("g") UTC
+        </MudText>
+    }
+}
+
+@code {
+    [SupplyParameterFromQuery]
+    public Guid? TenantId { get; set; }
+
+    private bool _isLoading = true;
+    private List<TenantDto> _tenants = new();
+    private Guid? _selectedTenantId;
+    private DefenderForEndpointDto? _data;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadTenantsAsync();
+        _selectedTenantId = TenantId ?? _tenants.FirstOrDefault()?.Id;
+
+        if (_selectedTenantId.HasValue)
+            await LoadDataAsync();
+
+        _isLoading = false;
+    }
+
+    private async Task LoadTenantsAsync()
+    {
+        try
+        {
+            _tenants = (await TenantService.GetAllAsync()).ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading tenants: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task LoadDataAsync()
+    {
+        if (!_selectedTenantId.HasValue) return;
+
+        _isLoading = true;
+        try
+        {
+            _data = await InventoryService.GetDefenderForEndpointAsync(_selectedTenantId.Value);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading data: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+}

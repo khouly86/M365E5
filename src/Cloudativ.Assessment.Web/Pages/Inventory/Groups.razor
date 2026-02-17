@@ -1,0 +1,344 @@
+@page "/inventory/groups"
+@attribute [Authorize]
+@inject IInventoryService InventoryService
+@inject ITenantService TenantService
+@inject NavigationManager NavigationManager
+@inject ISnackbar Snackbar
+
+<PageTitle>Group Inventory - Cloudativ Assessment</PageTitle>
+
+<div class="d-flex justify-space-between align-center mb-4">
+    <div>
+        <MudText Typo="Typo.h5" Style="font-weight: 600; color: #51627A;">Group Inventory</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">Security groups, Microsoft 365 groups, and distribution lists</MudText>
+    </div>
+    <div class="d-flex gap-2 align-center">
+        <MudSelect T="Guid?" Label="Tenant" @bind-Value="_selectedTenantId" Dense="true"
+                   Style="min-width: 200px;" Variant="Variant.Outlined">
+            @foreach (var tenant in _tenants)
+            {
+                <MudSelectItem Value="@((Guid?)tenant.Id)">@tenant.Name</MudSelectItem>
+            }
+        </MudSelect>
+        <Cloudativ.Assessment.Web.Shared.Components.ExportDropdown
+            ExportType="groups"
+            TenantId="_selectedTenantId"
+            QueryString="@GetExportQueryString()" />
+    </div>
+</div>
+
+<!-- Filter Panel -->
+<MudPaper Class="pa-4 mb-4" Elevation="2" Style="border-radius: 12px;">
+    <MudGrid>
+        <MudItem xs="12" md="4">
+            <MudTextField @bind-Value="_filter.SearchTerm" Label="Search" Placeholder="Group name or email"
+                          Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                          Immediate="true" DebounceInterval="300" OnDebounceIntervalElapsed="LoadGroupsAsync" />
+        </MudItem>
+        <MudItem xs="12" md="2">
+            <MudSelect T="string" Label="Group Type" @bind-Value="_filter.GroupType" Dense="true">
+                <MudSelectItem Value="@((string?)null)">All Types</MudSelectItem>
+                <MudSelectItem Value="@("Security")">Security</MudSelectItem>
+                <MudSelectItem Value="@("Microsoft365")">Microsoft 365</MudSelectItem>
+                <MudSelectItem Value="@("Distribution")">Distribution</MudSelectItem>
+                <MudSelectItem Value="@("MailEnabled")">Mail-Enabled</MudSelectItem>
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" md="2">
+            <MudSelect T="bool?" Label="Dynamic" @bind-Value="_filter.IsDynamic" Dense="true">
+                <MudSelectItem Value="@((bool?)null)">All</MudSelectItem>
+                <MudSelectItem Value="@((bool?)true)">Dynamic Only</MudSelectItem>
+                <MudSelectItem Value="@((bool?)false)">Assigned Only</MudSelectItem>
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" md="2">
+            <MudSelect T="bool?" Label="External Members" @bind-Value="_filter.HasExternalMembers" Dense="true">
+                <MudSelectItem Value="@((bool?)null)">All</MudSelectItem>
+                <MudSelectItem Value="@((bool?)true)">With External</MudSelectItem>
+                <MudSelectItem Value="@((bool?)false)">Internal Only</MudSelectItem>
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" md="2" Class="d-flex align-end">
+            <MudButton Variant="Variant.Text" Color="Color.Primary" OnClick="ClearFilters">Clear</MudButton>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+<!-- Quick Stats -->
+<MudGrid Class="mb-4">
+    <MudItem xs="6" sm="2">
+        <MudPaper Class="pa-3" Elevation="1" Style="border-radius: 8px;">
+            <MudText Typo="Typo.caption" Color="Color.Secondary">Total Groups</MudText>
+            <MudText Typo="Typo.h6" Style="font-weight: 600;">@_stats.Total.ToString("N0")</MudText>
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="6" sm="2">
+        <MudPaper Class="pa-3" Elevation="1" Style="border-radius: 8px; border-left: 3px solid #2196F3;">
+            <MudText Typo="Typo.caption" Color="Color.Secondary">Security</MudText>
+            <MudText Typo="Typo.h6" Style="font-weight: 600;">@_stats.Security.ToString("N0")</MudText>
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="6" sm="2">
+        <MudPaper Class="pa-3" Elevation="1" Style="border-radius: 8px; border-left: 3px solid #4CAF50;">
+            <MudText Typo="Typo.caption" Color="Color.Secondary">Microsoft 365</MudText>
+            <MudText Typo="Typo.h6" Style="font-weight: 600;">@_stats.M365.ToString("N0")</MudText>
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="6" sm="2">
+        <MudPaper Class="pa-3" Elevation="1" Style="border-radius: 8px; border-left: 3px solid #9C27B0;">
+            <MudText Typo="Typo.caption" Color="Color.Secondary">Dynamic</MudText>
+            <MudText Typo="Typo.h6" Style="font-weight: 600;">@_stats.Dynamic.ToString("N0")</MudText>
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="6" sm="2">
+        <MudPaper Class="pa-3" Elevation="1" Style="border-radius: 8px; border-left: 3px solid #ff9800;">
+            <MudText Typo="Typo.caption" Color="Color.Secondary">With Guests</MudText>
+            <MudText Typo="Typo.h6" Style="font-weight: 600;">@_stats.WithGuests.ToString("N0")</MudText>
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="6" sm="2">
+        <MudPaper Class="pa-3" Elevation="1" Style="border-radius: 8px; border-left: 3px solid #51627A;">
+            <MudText Typo="Typo.caption" Color="Color.Secondary">Role-Assignable</MudText>
+            <MudText Typo="Typo.h6" Style="font-weight: 600;">@_stats.RoleAssignable.ToString("N0")</MudText>
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
+@if (_isLoading)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+}
+else
+{
+    <MudPaper Elevation="2" Style="border-radius: 12px;">
+        <MudTable Items="_groups" Dense="true" Hover="true" Striped="true"
+                  ServerData="@(new Func<TableState, Task<TableData<GroupInventoryDto>>>(ServerReload))"
+                  @ref="_table">
+            <HeaderContent>
+                <MudTh><MudTableSortLabel SortLabel="displayName" T="GroupInventoryDto">Group</MudTableSortLabel></MudTh>
+                <MudTh>Type</MudTh>
+                <MudTh>Membership</MudTh>
+                <MudTh><MudTableSortLabel SortLabel="memberCount" T="GroupInventoryDto">Members</MudTableSortLabel></MudTh>
+                <MudTh>External</MudTh>
+                <MudTh>Role-Assignable</MudTh>
+                <MudTh>Created</MudTh>
+                <MudTh>Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>
+                    <div class="d-flex align-center">
+                        <MudAvatar Size="Size.Small" Style="background: #E0FC8E; color: #51627A;" Class="mr-2">
+                            <MudIcon Icon="@Icons.Material.Filled.Group" Size="Size.Small" />
+                        </MudAvatar>
+                        <div>
+                            <MudText Typo="Typo.body2" Style="font-weight: 500;">@context.DisplayName</MudText>
+                            @if (!string.IsNullOrEmpty(context.Mail))
+                            {
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">@context.Mail</MudText>
+                            }
+                        </div>
+                    </div>
+                </MudTd>
+                <MudTd>
+                    <MudChip Size="Size.Small" Color="@GetGroupTypeColor(context)" Variant="Variant.Outlined">
+                        @GetGroupTypeLabel(context)
+                    </MudChip>
+                </MudTd>
+                <MudTd>
+                    @if (context.IsDynamicMembership)
+                    {
+                        <MudChip Size="Size.Small" Color="Color.Info" Variant="Variant.Filled">Dynamic</MudChip>
+                    }
+                    else
+                    {
+                        <MudChip Size="Size.Small" Color="Color.Default" Variant="Variant.Outlined">Assigned</MudChip>
+                    }
+                </MudTd>
+                <MudTd>@context.MemberCount.ToString("N0")</MudTd>
+                <MudTd>
+                    @if (context.HasExternalMembers)
+                    {
+                        <MudIcon Icon="@Icons.Material.Filled.PersonOutline" Color="Color.Warning" Size="Size.Small" />
+                        <MudText Typo="Typo.caption" Color="Color.Warning">Yes</MudText>
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">No</MudText>
+                    }
+                </MudTd>
+                <MudTd>
+                    @if (context.IsRoleAssignable)
+                    {
+                        <MudIcon Icon="@Icons.Material.Filled.AdminPanelSettings" Color="Color.Primary" Size="Size.Small" />
+                    }
+                </MudTd>
+                <MudTd>
+                    @if (context.CreatedDateTime.HasValue)
+                    {
+                        <MudText Typo="Typo.body2">@context.CreatedDateTime.Value.ToString("MMM dd, yyyy")</MudText>
+                    }
+                </MudTd>
+                <MudTd>
+                    <MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="Size.Small"
+                                   OnClick="@(() => ViewGroupDetails(context))" />
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText Typo="Typo.body1" Class="pa-4 text-center">No groups found matching the current filters.</MudText>
+            </NoRecordsContent>
+            <PagerContent>
+                <MudTablePager PageSizeOptions="new int[] { 25, 50, 100, 250 }" />
+            </PagerContent>
+        </MudTable>
+    </MudPaper>
+}
+
+<!-- Group Details Dialog -->
+<MudDialog @bind-Visible="_showGroupDialog" Options="_dialogOptions">
+    <DialogContent>
+        @if (_selectedGroup != null)
+        {
+            <MudGrid>
+                <MudItem xs="12">
+                    <div class="d-flex align-center mb-4">
+                        <MudAvatar Size="Size.Large" Style="background: #E0FC8E; color: #51627A;" Class="mr-3">
+                            <MudIcon Icon="@Icons.Material.Filled.Group" />
+                        </MudAvatar>
+                        <div>
+                            <MudText Typo="Typo.h6">@_selectedGroup.DisplayName</MudText>
+                            <MudText Typo="Typo.body2" Color="Color.Secondary">@_selectedGroup.Mail</MudText>
+                        </div>
+                    </div>
+                </MudItem>
+                <MudItem xs="6">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Object ID</MudText>
+                    <MudText Typo="Typo.body2">@_selectedGroup.ObjectId</MudText>
+                </MudItem>
+                <MudItem xs="6">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Group Type</MudText>
+                    <MudChip Size="Size.Small" Color="@GetGroupTypeColor(_selectedGroup)">@GetGroupTypeLabel(_selectedGroup)</MudChip>
+                </MudItem>
+                <MudItem xs="6">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Member Count</MudText>
+                    <MudText Typo="Typo.body2">@_selectedGroup.MemberCount</MudText>
+                </MudItem>
+                <MudItem xs="6">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Membership Type</MudText>
+                    <MudText Typo="Typo.body2">@(_selectedGroup.IsDynamicMembership ? "Dynamic" : "Assigned")</MudText>
+                </MudItem>
+                @if (!string.IsNullOrEmpty(_selectedGroup.Description))
+                {
+                    <MudItem xs="12">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Description</MudText>
+                        <MudText Typo="Typo.body2">@_selectedGroup.Description</MudText>
+                    </MudItem>
+                }
+            </MudGrid>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton Color="Color.Primary" OnClick="@(() => _showGroupDialog = false)">Close</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [SupplyParameterFromQuery]
+    public Guid? TenantId { get; set; }
+
+    private bool _isLoading = true;
+    private List<TenantDto> _tenants = new();
+    private Guid? _selectedTenantId;
+    private List<GroupInventoryDto> _groups = new();
+    private MudTable<GroupInventoryDto>? _table;
+    private GroupInventoryFilter _filter = new();
+    private GroupInventoryDto? _selectedGroup;
+    private bool _showGroupDialog = false;
+    private DialogOptions _dialogOptions = new() { MaxWidth = MaxWidth.Medium, FullWidth = true };
+
+    private (int Total, int Security, int M365, int Dynamic, int WithGuests, int RoleAssignable) _stats;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadTenantsAsync();
+        _selectedTenantId = TenantId ?? _tenants.FirstOrDefault()?.Id;
+        _filter.TenantId = _selectedTenantId ?? Guid.Empty;
+        _isLoading = false;
+    }
+
+    private async Task LoadTenantsAsync()
+    {
+        try
+        {
+            _tenants = (await TenantService.GetAllAsync()).ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading tenants: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task LoadGroupsAsync()
+    {
+        if (_table != null) await _table.ReloadServerData();
+    }
+
+    private async Task<TableData<GroupInventoryDto>> ServerReload(TableState state)
+    {
+        if (!_selectedTenantId.HasValue)
+            return new TableData<GroupInventoryDto> { Items = new List<GroupInventoryDto>(), TotalItems = 0 };
+
+        try
+        {
+            _filter.TenantId = _selectedTenantId.Value;
+            _filter.Page = state.Page + 1;
+            _filter.PageSize = state.PageSize;
+
+            var result = await InventoryService.GetGroupsAsync(_selectedTenantId.Value, _filter);
+
+            return new TableData<GroupInventoryDto>
+            {
+                Items = result.Items,
+                TotalItems = result.TotalCount
+            };
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading groups: {ex.Message}", Severity.Error);
+            return new TableData<GroupInventoryDto> { Items = new List<GroupInventoryDto>(), TotalItems = 0 };
+        }
+    }
+
+    private void ClearFilters()
+    {
+        _filter = new GroupInventoryFilter { TenantId = _selectedTenantId ?? Guid.Empty };
+        _table?.ReloadServerData();
+    }
+
+    private void ViewGroupDetails(GroupInventoryDto group)
+    {
+        _selectedGroup = group;
+        _showGroupDialog = true;
+    }
+
+    private string GetGroupTypeLabel(GroupInventoryDto group)
+    {
+        if (group.IsMicrosoft365Group) return "Microsoft 365";
+        if (group.IsSecurityGroup) return "Security";
+        return group.GroupType ?? "Unknown";
+    }
+
+    private Color GetGroupTypeColor(GroupInventoryDto group)
+    {
+        if (group.IsMicrosoft365Group) return Color.Success;
+        if (group.IsSecurityGroup) return Color.Primary;
+        return Color.Default;
+    }
+
+    private string GetExportQueryString()
+    {
+        var queryParams = new List<string>();
+        if (!string.IsNullOrEmpty(_filter.SearchTerm)) queryParams.Add($"searchTerm={Uri.EscapeDataString(_filter.SearchTerm)}");
+        if (!string.IsNullOrEmpty(_filter.GroupType)) queryParams.Add($"groupType={Uri.EscapeDataString(_filter.GroupType)}");
+        return string.Join("&", queryParams);
+    }
+}

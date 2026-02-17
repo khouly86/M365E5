@@ -118,6 +118,45 @@
                 Governance
             </MudNavLink>
 
+            <MudDivider Class="my-2" Style="border-color: rgba(255,255,255,0.2);" />
+            <MudText Typo="Typo.overline" Class="ml-4" Style="color: rgba(255,255,255,0.6);">INVENTORY</MudText>
+
+            <MudNavLink Href="/inventory" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Inventory2">
+                Inventory Dashboard
+            </MudNavLink>
+            <MudNavGroup Title="Identity" Icon="@Icons.Material.Filled.People" Expanded="false">
+                <MudNavLink Href="/inventory/users" Icon="@Icons.Material.Filled.Person">Users</MudNavLink>
+                <MudNavLink Href="/inventory/groups" Icon="@Icons.Material.Filled.Group">Groups</MudNavLink>
+                <MudNavLink Href="/inventory/roles" Icon="@Icons.Material.Filled.VerifiedUser">Directory Roles</MudNavLink>
+                <MudNavLink Href="/inventory/conditional-access" Icon="@Icons.Material.Filled.Policy">Conditional Access</MudNavLink>
+                <MudNavLink Href="/inventory/service-principals" Icon="@Icons.Material.Filled.Api">Service Principals</MudNavLink>
+            </MudNavGroup>
+            <MudNavGroup Title="Devices" Icon="@Icons.Material.Filled.Devices" Expanded="false">
+                <MudNavLink Href="/inventory/devices" Icon="@Icons.Material.Filled.PhoneAndroid">Device Inventory</MudNavLink>
+                <MudNavLink Href="/inventory/compliance-policies" Icon="@Icons.Material.Filled.Verified">Compliance Policies</MudNavLink>
+            </MudNavGroup>
+            <MudNavGroup Title="Defender" Icon="@Icons.Material.Filled.Shield" Expanded="false">
+                <MudNavLink Href="/inventory/defender/endpoint" Icon="@Icons.Material.Filled.Security">Endpoint</MudNavLink>
+                <MudNavLink Href="/inventory/defender/office365" Icon="@Icons.Material.Filled.Email">Office 365</MudNavLink>
+                <MudNavLink Href="/inventory/defender/identity" Icon="@Icons.Material.Filled.Fingerprint">Identity</MudNavLink>
+                <MudNavLink Href="/inventory/defender/cloud-apps" Icon="@Icons.Material.Filled.Cloud">Cloud Apps</MudNavLink>
+            </MudNavGroup>
+            <MudNavGroup Title="Collaboration" Icon="@Icons.Material.Filled.Groups" Expanded="false">
+                <MudNavLink Href="/inventory/sharepoint" Icon="@Icons.Material.Filled.Folder">SharePoint Sites</MudNavLink>
+                <MudNavLink Href="/inventory/teams" Icon="@Icons.Material.Filled.Forum">Teams</MudNavLink>
+            </MudNavGroup>
+            <MudNavLink Href="/inventory/applications" Icon="@Icons.Material.Filled.Apps">
+                Enterprise Apps
+            </MudNavLink>
+            <MudNavLink Href="/inventory/licenses" Icon="@Icons.Material.Filled.CreditCard">
+                License Utilization
+            </MudNavLink>
+            <MudNavLink Href="/inventory/high-risk" Icon="@Icons.Material.Filled.Warning">
+                High-Risk Findings
+            </MudNavLink>
+
+            <MudDivider Class="my-2" Style="border-color: rgba(255,255,255,0.2);" />
+
             <AuthorizeView Roles="SuperAdmin">
                 <Authorized>
                     <MudNavLink Href="/admin" Icon="@Icons.Material.Filled.AdminPanelSettings">

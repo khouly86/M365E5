@@ -15,6 +15,7 @@ public record DashboardSummaryDto
     public List<TenantScoreDto> TopTenants { get; init; } = new();
     public List<TenantScoreDto> LowestTenants { get; init; } = new();
     public List<RecentAssessmentDto> RecentAssessments { get; init; } = new();
+
 }
 
 public record TenantScoreDto

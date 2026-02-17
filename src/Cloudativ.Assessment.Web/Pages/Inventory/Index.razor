@@ -1,0 +1,581 @@
+@page "/inventory"
+@page "/inventory/{TenantId:guid}"
+@attribute [Authorize]
+@using Cloudativ.Assessment.Domain.Enums
+@using MudSeverity = MudBlazor.Severity
+@inject IInventoryService InventoryService
+@inject ITenantService TenantService
+@inject NavigationManager NavigationManager
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+<PageTitle>Inventory Dashboard - Cloudativ Assessment</PageTitle>
+
+<div class="d-flex justify-space-between align-center mb-4">
+    <div>
+        <MudText Typo="Typo.h5" Style="font-weight: 600; color: #51627A;">Inventory Dashboard</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">Comprehensive M365 asset inventory across all license types</MudText>
+    </div>
+    <div class="d-flex gap-2">
+        <MudSelect T="Guid?" Label="Select Tenant" @bind-Value="_selectedTenantId" Dense="true"
+                   Style="min-width: 250px;" Variant="Variant.Outlined">
+            @foreach (var tenant in _tenants)
+            {
+                <MudSelectItem Value="@((Guid?)tenant.Id)">@tenant.Name</MudSelectItem>
+            }
+        </MudSelect>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Refresh"
+                   OnClick="StartInventoryCollection" Disabled="@(!_selectedTenantId.HasValue || _isCollecting)">
+            @if (_isCollecting)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                <span>Collecting...</span>
+            }
+            else
+            {
+                <span>Collect Inventory</span>
+            }
+        </MudButton>
+    </div>
+</div>
+
+@if (_isLoading)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+}
+else if (!_selectedTenantId.HasValue)
+{
+    <MudPaper Class="pa-8 text-center" Elevation="2" Style="border-radius: 12px;">
+        <MudIcon Icon="@Icons.Material.Filled.Inventory2" Size="Size.Large" Color="Color.Primary" Class="mb-4" />
+        <MudText Typo="Typo.h6">Select a Tenant</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+            Choose a tenant from the dropdown above to view its inventory.
+        </MudText>
+    </MudPaper>
+}
+else if (_dashboard == null)
+{
+    <MudPaper Class="pa-8 text-center" Elevation="2" Style="border-radius: 12px;">
+        <MudIcon Icon="@Icons.Material.Filled.Inventory" Size="Size.Large" Color="Color.Warning" Class="mb-4" />
+        <MudText Typo="Typo.h6">No Inventory Data</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+            Click "Collect Inventory" to start collecting asset data for this tenant.
+        </MudText>
+    </MudPaper>
+}
+else
+{
+    <!-- Quick Stats -->
+    <MudGrid Class="mb-4">
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="2" Style="border-radius: 12px;">
+                <div class="d-flex align-center justify-space-between">
+                    <div>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Total Users</MudText>
+                        <MudText Typo="Typo.h4" Style="font-weight: 600;">@_dashboard.TotalUsers.ToString("N0")</MudText>
+                    </div>
+                    <MudAvatar Size="Size.Large" Style="background: #E0FC8E; color: #51627A;">
+                        <MudIcon Icon="@Icons.Material.Filled.People" />
+                    </MudAvatar>
+                </div>
+                <MudText Typo="Typo.caption" Color="Color.Error">
+                    @_dashboard.HighRiskUsers high-risk users
+                </MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="2" Style="border-radius: 12px;">
+                <div class="d-flex align-center justify-space-between">
+                    <div>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Total Devices</MudText>
+                        <MudText Typo="Typo.h4" Style="font-weight: 600;">@_dashboard.TotalDevices.ToString("N0")</MudText>
+                    </div>
+                    <MudAvatar Size="Size.Large" Style="background: #E0FC8E; color: #51627A;">
+                        <MudIcon Icon="@Icons.Material.Filled.Devices" />
+                    </MudAvatar>
+                </div>
+                <MudText Typo="Typo.caption" Color="Color.Error">
+                    @_dashboard.NonCompliantDevices non-compliant
+                </MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="2" Style="border-radius: 12px;">
+                <div class="d-flex align-center justify-space-between">
+                    <div>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Enterprise Apps</MudText>
+                        <MudText Typo="Typo.h4" Style="font-weight: 600;">@_dashboard.TotalApps.ToString("N0")</MudText>
+                    </div>
+                    <MudAvatar Size="Size.Large" Style="background: #E0FC8E; color: #51627A;">
+                        <MudIcon Icon="@Icons.Material.Filled.Apps" />
+                    </MudAvatar>
+                </div>
+                <MudText Typo="Typo.caption" Color="Color.Warning">
+                    @_dashboard.HighPrivilegeApps high-privilege apps
+                </MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="2" Style="border-radius: 12px;">
+                <div class="d-flex align-center justify-space-between">
+                    <div>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">High-Risk Findings</MudText>
+                        <MudText Typo="Typo.h4" Style="font-weight: 600; color: #f44336;">@_dashboard.CriticalFindings</MudText>
+                    </div>
+                    <MudAvatar Size="Size.Large" Style="background: #FFEBEE; color: #f44336;">
+                        <MudIcon Icon="@Icons.Material.Filled.Warning" />
+                    </MudAvatar>
+                </div>
+                <MudText Typo="Typo.caption" Color="Color.Warning">
+                    @_dashboard.HighFindings high / @_dashboard.MediumFindings medium
+                </MudText>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    <!-- License Distribution Summary -->
+    @if (_dashboard.LicensesByCategory.Any() || _dashboard.E5Utilization != null)
+    {
+        <MudPaper Class="pa-4 mb-4" Elevation="2" Style="border-radius: 12px;">
+            <div class="d-flex justify-space-between align-center mb-3">
+                <MudText Typo="Typo.h6" Style="font-weight: 600;">License Distribution</MudText>
+                <MudButton Variant="Variant.Text" Color="Color.Primary" EndIcon="@Icons.Material.Filled.ArrowForward"
+                           OnClick="@(() => NavigationManager.NavigateTo($"/inventory/licenses?tenantId={_selectedTenantId}"))">
+                    View Details
+                </MudButton>
+            </div>
+
+            <!-- License Tier Overview Cards -->
+            @if (_dashboard.LicensesByCategory.Any())
+            {
+                <MudGrid Class="mb-4">
+                    @foreach (var tierGroup in _dashboard.LicensesByCategory
+                        .Where(l => l.TotalLicenses > 0)
+                        .GroupBy(l => l.Category.GetTierGroup())
+                        .OrderByDescending(g => g.Sum(l => l.TotalLicenses)))
+                    {
+                        var tierTotal = tierGroup.Sum(l => l.TotalLicenses);
+                        var tierAssigned = tierGroup.Sum(l => l.AssignedLicenses);
+                        var tierUtilization = tierTotal > 0 ? (double)tierAssigned / tierTotal * 100 : 0;
+
+                        <MudItem xs="6" sm="4" md="2">
+                            <MudPaper Class="pa-3" Elevation="0" Style="@GetTierCardStyle(tierGroup.Key)">
+                                <MudText Typo="Typo.subtitle2" Style="font-weight: 600;">@tierGroup.Key</MudText>
+                                <MudText Typo="Typo.h5" Style="font-weight: 600;">@tierTotal.ToString("N0")</MudText>
+                                <MudProgressLinear Value="@tierUtilization"
+                                                   Color="@GetUtilizationColor(tierUtilization)"
+                                                   Size="Size.Small" Rounded="true" Class="my-1" />
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                    @tierAssigned.ToString("N0") assigned (@tierUtilization.ToString("F0")%)
+                                </MudText>
+                            </MudPaper>
+                        </MudItem>
+                    }
+                </MudGrid>
+
+                <!-- Top License Categories -->
+                <MudText Typo="Typo.subtitle2" Class="mb-2">Top License Categories</MudText>
+                <MudGrid>
+                    @foreach (var license in _dashboard.LicensesByCategory
+                        .Where(l => l.TotalLicenses > 0)
+                        .OrderByDescending(l => l.TotalLicenses)
+                        .Take(6))
+                    {
+                        <MudItem xs="12" sm="6" md="4">
+                            <div class="d-flex align-center justify-space-between pa-2" style="background: #f5f5f5; border-radius: 8px;">
+                                <div class="d-flex align-center">
+                                    <MudChip Size="Size.Small" Style="@GetCategoryChipStyle(license.Category)" Class="mr-2">
+                                        @license.Category.GetShortName()
+                                    </MudChip>
+                                    <div>
+                                        <MudText Typo="Typo.body2" Style="font-weight: 500;">@license.DisplayName</MudText>
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                            @license.AssignedLicenses / @license.TotalLicenses assigned
+                                        </MudText>
+                                    </div>
+                                </div>
+                                <MudText Typo="Typo.body2" Style="@($"font-weight: 500; color: {GetUtilizationColorHex(license.UtilizationPercentage)};")">
+                                    @license.UtilizationPercentage.ToString("F0")%
+                                </MudText>
+                            </div>
+                        </MudItem>
+                    }
+                </MudGrid>
+            }
+            else if (_dashboard.E5Utilization != null)
+            {
+                <!-- Fallback to legacy E5-only view -->
+                <MudGrid>
+                    <MudItem xs="12" md="6">
+                        <MudProgressLinear Value="@_dashboard.E5Utilization.UtilizationPercentage"
+                                           Color="@GetUtilizationColor(_dashboard.E5Utilization.UtilizationPercentage)"
+                                           Size="Size.Large" Rounded="true" Class="mb-2" />
+                        <div class="d-flex justify-space-between">
+                            <MudText Typo="Typo.caption">@_dashboard.E5Utilization.AssignedLicenses of @_dashboard.E5Utilization.TotalLicenses E5 licenses assigned</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Error">Est. monthly waste: $@_dashboard.E5Utilization.EstimatedWaste.ToString("N0")</MudText>
+                        </div>
+                    </MudItem>
+                    <MudItem xs="12" md="6">
+                        <div class="d-flex gap-4 flex-wrap">
+                            <div>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">No MFA</MudText>
+                                <MudText Typo="Typo.body1" Style="font-weight: 600;">@_dashboard.E5Utilization.UsersWithoutMfa</MudText>
+                            </div>
+                            <div>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">No CA Policies</MudText>
+                                <MudText Typo="Typo.body1" Style="font-weight: 600;">@_dashboard.E5Utilization.UsersWithoutCa</MudText>
+                            </div>
+                            <div>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">Defender Not Onboarded</MudText>
+                                <MudText Typo="Typo.body1" Style="font-weight: 600;">@_dashboard.E5Utilization.UsersWithoutDefender</MudText>
+                            </div>
+                        </div>
+                    </MudItem>
+                </MudGrid>
+            }
+        </MudPaper>
+
+        <!-- Licensed vs Unlicensed Users Summary -->
+        @if (_dashboard.TotalLicensedUsers > 0 || _dashboard.TotalUnlicensedUsers > 0)
+        {
+            <MudGrid Class="mb-4">
+                <MudItem xs="12" sm="6" md="4">
+                    <MudPaper Class="pa-3" Elevation="2" Style="border-radius: 12px; border-left: 4px solid #4CAF50;">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Licensed Users</MudText>
+                        <MudText Typo="Typo.h5" Style="font-weight: 600; color: #4CAF50;">
+                            @_dashboard.TotalLicensedUsers.ToString("N0")
+                        </MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="12" sm="6" md="4">
+                    <MudPaper Class="pa-3" Elevation="2" Style="border-radius: 12px; border-left: 4px solid #ff9800;">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Unlicensed Users</MudText>
+                        <MudText Typo="Typo.h5" Style="font-weight: 600; color: #ff9800;">
+                            @_dashboard.TotalUnlicensedUsers.ToString("N0")
+                        </MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="12" sm="12" md="4">
+                    <MudPaper Class="pa-3" Elevation="2" Style="border-radius: 12px; border-left: 4px solid #f44336;">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Est. Monthly Waste</MudText>
+                        <MudText Typo="Typo.h5" Style="font-weight: 600; color: #f44336;">
+                            $@((_dashboard.LicenseDistribution?.TotalEstimatedMonthlyWaste ?? _dashboard.E5Utilization?.EstimatedWaste ?? 0).ToString("N0"))
+                        </MudText>
+                    </MudPaper>
+                </MudItem>
+            </MudGrid>
+        }
+    }
+
+    <!-- Domain Status Cards -->
+    <MudText Typo="Typo.h6" Style="font-weight: 600;" Class="mb-3">Inventory Domains</MudText>
+    <MudGrid Class="mb-4">
+        @foreach (var domain in _dashboard.DomainStatuses)
+        {
+            <MudItem xs="12" sm="6" md="4" lg="3">
+                <MudPaper Class="pa-4" Elevation="2" Style="border-radius: 12px; cursor: pointer;"
+                          @onclick="() => NavigateToDomain(domain.Domain)">
+                    <div class="d-flex justify-space-between align-center mb-2">
+                        <MudIcon Icon="@GetDomainIcon(domain.Domain)" Color="Color.Primary" />
+                        <MudChip Size="Size.Small" Color="@GetStatusColor(domain.Status)" Variant="Variant.Filled">
+                            @domain.Status
+                        </MudChip>
+                    </div>
+                    <MudText Typo="Typo.subtitle1" Style="font-weight: 600;">@domain.DisplayName</MudText>
+                    <div class="d-flex justify-space-between align-center mt-2">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                            @domain.ItemCount.ToString("N0") items
+                        </MudText>
+                        @if (domain.LastCollected.HasValue)
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                @GetTimeAgo(domain.LastCollected.Value)
+                            </MudText>
+                        }
+                    </div>
+                </MudPaper>
+            </MudItem>
+        }
+    </MudGrid>
+
+    <!-- High-Risk Findings Summary -->
+    @if (_dashboard.HighRiskSummary.Any())
+    {
+        <MudPaper Class="pa-4" Elevation="2" Style="border-radius: 12px;">
+            <div class="d-flex justify-space-between align-center mb-3">
+                <MudText Typo="Typo.h6" Style="font-weight: 600;">Top High-Risk Findings</MudText>
+                <MudButton Variant="Variant.Text" Color="Color.Primary" EndIcon="@Icons.Material.Filled.ArrowForward"
+                           OnClick="@(() => NavigationManager.NavigateTo($"/inventory/high-risk?tenantId={_selectedTenantId}"))">
+                    View All
+                </MudButton>
+            </div>
+            <MudTable Items="_dashboard.HighRiskSummary" Dense="true" Hover="true">
+                <HeaderContent>
+                    <MudTh>Severity</MudTh>
+                    <MudTh>Finding</MudTh>
+                    <MudTh>Affected</MudTh>
+                    <MudTh></MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>
+                        <MudChip Size="Size.Small" Color="@GetSeverityColor(context.Severity)">
+                            @context.Severity
+                        </MudChip>
+                    </MudTd>
+                    <MudTd>
+                        <MudText Typo="Typo.body2" Style="font-weight: 500;">@context.Title</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">@context.Description</MudText>
+                    </MudTd>
+                    <MudTd>@context.AffectedCount resources</MudTd>
+                    <MudTd>
+                        <MudIconButton Icon="@Icons.Material.Filled.ArrowForward" Size="Size.Small" />
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+        </MudPaper>
+    }
+}
+
+@code {
+    [Parameter]
+    public Guid? TenantId { get; set; }
+
+    private bool _isLoading = true;
+    private bool _isCollecting = false;
+    private List<TenantDto> _tenants = new();
+    private Guid? _selectedTenantId;
+    private InventoryDashboardDto? _dashboard;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadTenantsAsync();
+
+        if (TenantId.HasValue)
+        {
+            _selectedTenantId = TenantId;
+        }
+        else if (_tenants.Any())
+        {
+            _selectedTenantId = _tenants.First().Id;
+        }
+
+        if (_selectedTenantId.HasValue)
+        {
+            await LoadDashboardAsync();
+        }
+
+        _isLoading = false;
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (TenantId.HasValue && TenantId != _selectedTenantId)
+        {
+            _selectedTenantId = TenantId;
+            await LoadDashboardAsync();
+        }
+    }
+
+    private async Task LoadTenantsAsync()
+    {
+        try
+        {
+            _tenants = (await TenantService.GetAllAsync()).ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading tenants: {ex.Message}", MudSeverity.Error);
+        }
+    }
+
+    private async Task LoadDashboardAsync()
+    {
+        if (!_selectedTenantId.HasValue) return;
+
+        _isLoading = true;
+        try
+        {
+            _dashboard = await InventoryService.GetDashboardAsync(_selectedTenantId.Value);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading dashboard: {ex.Message}", MudSeverity.Error);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task StartInventoryCollection()
+    {
+        if (!_selectedTenantId.HasValue) return;
+
+        _isCollecting = true;
+        try
+        {
+            var request = new StartInventoryRequest
+            {
+                TenantId = _selectedTenantId.Value,
+                Domains = null // Collect all domains
+            };
+
+            var snapshotId = await InventoryService.StartInventoryCollectionAsync(request);
+            Snackbar.Add("Inventory collection started. This may take a few minutes.", MudSeverity.Info);
+
+            // Poll for completion
+            await PollForCompletionAsync(snapshotId);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error starting collection: {ex.Message}", MudSeverity.Error);
+        }
+        finally
+        {
+            _isCollecting = false;
+        }
+    }
+
+    private async Task PollForCompletionAsync(Guid snapshotId)
+    {
+        var maxAttempts = 60; // 5 minutes max
+        var attempts = 0;
+
+        while (attempts < maxAttempts)
+        {
+            await Task.Delay(5000); // Poll every 5 seconds
+            attempts++;
+
+            try
+            {
+                var progress = await InventoryService.GetProgressAsync(snapshotId);
+
+                if (progress.Status == InventoryStatus.Completed || progress.Status == InventoryStatus.PartiallyCompleted)
+                {
+                    Snackbar.Add($"Inventory collection completed. {progress.TotalItemsCollected} items collected.", MudSeverity.Success);
+                    await LoadDashboardAsync();
+                    break;
+                }
+                else if (progress.Status == InventoryStatus.Failed)
+                {
+                    Snackbar.Add("Inventory collection failed.", MudSeverity.Error);
+                    break;
+                }
+            }
+            catch
+            {
+                // Continue polling
+            }
+        }
+    }
+
+    private void NavigateToDomain(InventoryDomain domain)
+    {
+        var path = domain switch
+        {
+            InventoryDomain.TenantBaseline => $"/inventory/tenant?tenantId={_selectedTenantId}",
+            InventoryDomain.IdentityAccess => $"/inventory/users?tenantId={_selectedTenantId}",
+            InventoryDomain.DeviceEndpoint => $"/inventory/devices?tenantId={_selectedTenantId}",
+            InventoryDomain.DefenderXDR => $"/inventory/defender/endpoint?tenantId={_selectedTenantId}",
+            InventoryDomain.EmailExchange => $"/inventory/exchange?tenantId={_selectedTenantId}",
+            InventoryDomain.DataProtection => $"/inventory/data-protection?tenantId={_selectedTenantId}",
+            InventoryDomain.SharePointOneDriveTeams => $"/inventory/sharepoint?tenantId={_selectedTenantId}",
+            InventoryDomain.ApplicationsOAuth => $"/inventory/applications?tenantId={_selectedTenantId}",
+            InventoryDomain.LogsMonitoring => $"/inventory/audit-logs?tenantId={_selectedTenantId}",
+            InventoryDomain.SecureScore => $"/inventory/secure-score?tenantId={_selectedTenantId}",
+            InventoryDomain.LicenseUtilization => $"/inventory/licenses?tenantId={_selectedTenantId}",
+            InventoryDomain.HighRiskFindings => $"/inventory/high-risk?tenantId={_selectedTenantId}",
+            _ => "/inventory"
+        };
+
+        NavigationManager.NavigateTo(path);
+    }
+
+    private string GetDomainIcon(InventoryDomain domain) => domain switch
+    {
+        InventoryDomain.TenantBaseline => Icons.Material.Filled.Business,
+        InventoryDomain.IdentityAccess => Icons.Material.Filled.People,
+        InventoryDomain.DeviceEndpoint => Icons.Material.Filled.Devices,
+        InventoryDomain.DefenderXDR => Icons.Material.Filled.Shield,
+        InventoryDomain.EmailExchange => Icons.Material.Filled.Email,
+        InventoryDomain.DataProtection => Icons.Material.Filled.Lock,
+        InventoryDomain.SharePointOneDriveTeams => Icons.Material.Filled.Folder,
+        InventoryDomain.ApplicationsOAuth => Icons.Material.Filled.Apps,
+        InventoryDomain.LogsMonitoring => Icons.Material.Filled.FactCheck,
+        InventoryDomain.SecureScore => Icons.Material.Filled.Score,
+        InventoryDomain.LicenseUtilization => Icons.Material.Filled.CreditCard,
+        InventoryDomain.HighRiskFindings => Icons.Material.Filled.Warning,
+        _ => Icons.Material.Filled.Inventory
+    };
+
+    private Color GetStatusColor(InventoryStatus? status) => status switch
+    {
+        InventoryStatus.Completed => Color.Success,
+        InventoryStatus.Running => Color.Info,
+        InventoryStatus.PartiallyCompleted => Color.Warning,
+        InventoryStatus.Failed => Color.Error,
+        InventoryStatus.Cancelled => Color.Secondary,
+        _ => Color.Default
+    };
+
+    private Color GetSeverityColor(string severity) => severity.ToLower() switch
+    {
+        "critical" => Color.Error,
+        "high" => Color.Warning,
+        "medium" => Color.Info,
+        _ => Color.Default
+    };
+
+    private Color GetUtilizationColor(double percentage) => percentage switch
+    {
+        >= 80 => Color.Success,
+        >= 60 => Color.Warning,
+        _ => Color.Error
+    };
+
+    private string GetTimeAgo(DateTime dateTime)
+    {
+        var span = DateTime.UtcNow - dateTime;
+        if (span.TotalMinutes < 1) return "just now";
+        if (span.TotalMinutes < 60) return $"{(int)span.TotalMinutes}m ago";
+        if (span.TotalHours < 24) return $"{(int)span.TotalHours}h ago";
+        if (span.TotalDays < 7) return $"{(int)span.TotalDays}d ago";
+        return dateTime.ToString("MMM dd");
+    }
+
+    private string GetTierCardStyle(string tierGroup) => tierGroup switch
+    {
+        "Enterprise" => "background: #F3E5F5; border-radius: 8px; border-left: 3px solid #9C27B0;",
+        "Business" => "background: #E3F2FD; border-radius: 8px; border-left: 3px solid #1976D2;",
+        "Frontline" => "background: #E0F2F1; border-radius: 8px; border-left: 3px solid #00796B;",
+        "Education" => "background: #E8F5E9; border-radius: 8px; border-left: 3px solid #388E3C;",
+        "Government" => "background: #FFEBEE; border-radius: 8px; border-left: 3px solid #D32F2F;",
+        _ => "background: #f5f5f5; border-radius: 8px; border-left: 3px solid #757575;"
+    };
+
+    private string GetCategoryChipStyle(LicenseCategory category) => category switch
+    {
+        LicenseCategory.EnterpriseE5 => "background: #7B1FA2; color: white;",
+        LicenseCategory.EnterpriseE3 => "background: #9C27B0; color: white;",
+        LicenseCategory.EnterpriseE1 => "background: #BA68C8; color: white;",
+        LicenseCategory.BusinessPremium => "background: #1565C0; color: white;",
+        LicenseCategory.BusinessStandard => "background: #1976D2; color: white;",
+        LicenseCategory.BusinessBasic => "background: #42A5F5; color: white;",
+        LicenseCategory.FrontlineF3 => "background: #00796B; color: white;",
+        LicenseCategory.FrontlineF1 => "background: #26A69A; color: white;",
+        LicenseCategory.EducationA5 => "background: #2E7D32; color: white;",
+        LicenseCategory.EducationA3 => "background: #388E3C; color: white;",
+        LicenseCategory.EducationA1 => "background: #66BB6A; color: white;",
+        LicenseCategory.GovernmentG5 => "background: #C62828; color: white;",
+        LicenseCategory.GovernmentG3 => "background: #D32F2F; color: white;",
+        LicenseCategory.GovernmentG1 => "background: #EF5350; color: white;",
+        _ => "background: #E0FC8E; color: #51627A;"
+    };
+
+    private string GetUtilizationColorHex(double percentage) => percentage switch
+    {
+        >= 80 => "#4CAF50",
+        >= 60 => "#ff9800",
+        _ => "#f44336"
+    };
+}

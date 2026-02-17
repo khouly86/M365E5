@@ -1,0 +1,351 @@
+@page "/inventory/conditional-access"
+@attribute [Authorize]
+@inject IInventoryService InventoryService
+@inject ITenantService TenantService
+@inject NavigationManager NavigationManager
+@inject ISnackbar Snackbar
+
+<PageTitle>Conditional Access Policies - Cloudativ Assessment</PageTitle>
+
+<div class="d-flex justify-space-between align-center mb-4">
+    <div>
+        <MudText Typo="Typo.h5" Style="font-weight: 600; color: #51627A;">Conditional Access Policies</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">Policy inventory with coverage and configuration analysis</MudText>
+    </div>
+    <div class="d-flex gap-2 align-center">
+        <MudSelect T="Guid?" Label="Tenant" @bind-Value="_selectedTenantId" Dense="true"
+                   Style="min-width: 200px;" Variant="Variant.Outlined">
+            @foreach (var tenant in _tenants)
+            {
+                <MudSelectItem Value="@((Guid?)tenant.Id)">@tenant.Name</MudSelectItem>
+            }
+        </MudSelect>
+        <Cloudativ.Assessment.Web.Shared.Components.ExportDropdown
+            ExportType="ca-policies"
+            TenantId="_selectedTenantId" />
+    </div>
+</div>
+
+<!-- Quick Stats -->
+<MudGrid Class="mb-4">
+    <MudItem xs="6" sm="2">
+        <MudPaper Class="pa-3" Elevation="1" Style="border-radius: 8px;">
+            <MudText Typo="Typo.caption" Color="Color.Secondary">Total Policies</MudText>
+            <MudText Typo="Typo.h6" Style="font-weight: 600;">@_policies.Count</MudText>
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="6" sm="2">
+        <MudPaper Class="pa-3" Elevation="1" Style="border-radius: 8px; border-left: 3px solid #4CAF50;">
+            <MudText Typo="Typo.caption" Color="Color.Secondary">Enabled</MudText>
+            <MudText Typo="Typo.h6" Style="font-weight: 600; color: #4CAF50;">@_policies.Count(p => p.State == "enabled")</MudText>
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="6" sm="2">
+        <MudPaper Class="pa-3" Elevation="1" Style="border-radius: 8px; border-left: 3px solid #ff9800;">
+            <MudText Typo="Typo.caption" Color="Color.Secondary">Report-Only</MudText>
+            <MudText Typo="Typo.h6" Style="font-weight: 600; color: #ff9800;">@_policies.Count(p => p.State == "enabledForReportingButNotEnforced")</MudText>
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="6" sm="2">
+        <MudPaper Class="pa-3" Elevation="1" Style="border-radius: 8px; border-left: 3px solid #9e9e9e;">
+            <MudText Typo="Typo.caption" Color="Color.Secondary">Disabled</MudText>
+            <MudText Typo="Typo.h6" Style="font-weight: 600;">@_policies.Count(p => p.State == "disabled")</MudText>
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="6" sm="2">
+        <MudPaper Class="pa-3" Elevation="1" Style="border-radius: 8px; border-left: 3px solid #2196F3;">
+            <MudText Typo="Typo.caption" Color="Color.Secondary">MFA Required</MudText>
+            <MudText Typo="Typo.h6" Style="font-weight: 600;">@_policies.Count(p => p.RequiresMfa)</MudText>
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="6" sm="2">
+        <MudPaper Class="pa-3" Elevation="1" Style="border-radius: 8px; border-left: 3px solid #f44336;">
+            <MudText Typo="Typo.caption" Color="Color.Secondary">Blocks Legacy</MudText>
+            <MudText Typo="Typo.h6" Style="font-weight: 600;">@_policies.Count(p => p.BlocksLegacyAuth)</MudText>
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
+@if (_isLoading)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+}
+else
+{
+    <MudPaper Elevation="2" Style="border-radius: 12px;">
+        <MudTable Items="_policies" Dense="true" Hover="true" Striped="true">
+            <HeaderContent>
+                <MudTh>Policy</MudTh>
+                <MudTh>State</MudTh>
+                <MudTh>Target Users</MudTh>
+                <MudTh>Target Apps</MudTh>
+                <MudTh>Controls</MudTh>
+                <MudTh>Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>
+                    <MudText Typo="Typo.body2" Style="font-weight: 500;">@context.DisplayName</MudText>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">@context.PolicyId</MudText>
+                </MudTd>
+                <MudTd>
+                    <MudChip Size="Size.Small" Color="@GetStateColor(context.State)" Variant="Variant.Filled">
+                        @GetStateLabel(context.State)
+                    </MudChip>
+                </MudTd>
+                <MudTd>
+                    <div class="d-flex flex-wrap gap-1">
+                        @if (context.IncludeAllUsers)
+                        {
+                            <MudChip Size="Size.Small" Color="Color.Primary" Variant="Variant.Outlined">All Users</MudChip>
+                        }
+                        else
+                        {
+                            <MudChip Size="Size.Small" Color="Color.Default" Variant="Variant.Outlined">
+                                @context.IncludeUsers.Count users/groups
+                            </MudChip>
+                        }
+                        @if (context.ExcludeUsers.Any())
+                        {
+                            <MudChip Size="Size.Small" Color="Color.Secondary" Variant="Variant.Outlined">
+                                @context.ExcludeUsers.Count excluded
+                            </MudChip>
+                        }
+                    </div>
+                </MudTd>
+                <MudTd>
+                    <div class="d-flex flex-wrap gap-1">
+                        @if (context.IncludeAllApplications)
+                        {
+                            <MudChip Size="Size.Small" Color="Color.Primary" Variant="Variant.Outlined">All Apps</MudChip>
+                        }
+                        else
+                        {
+                            <MudChip Size="Size.Small" Color="Color.Default" Variant="Variant.Outlined">
+                                @context.IncludeApplications.Count apps
+                            </MudChip>
+                        }
+                    </div>
+                </MudTd>
+                <MudTd>
+                    <div class="d-flex flex-wrap gap-1">
+                        @if (context.RequiresMfa)
+                        {
+                            <MudChip Size="Size.Small" Color="Color.Info" Variant="Variant.Filled">MFA</MudChip>
+                        }
+                        @if (context.BlocksLegacyAuth)
+                        {
+                            <MudChip Size="Size.Small" Color="Color.Error" Variant="Variant.Filled">Block Legacy</MudChip>
+                        }
+                        @if (context.RequiresCompliantDevice)
+                        {
+                            <MudChip Size="Size.Small" Color="Color.Success" Variant="Variant.Outlined">Compliant Device</MudChip>
+                        }
+                        @if (context.RequiresHybridJoin)
+                        {
+                            <MudChip Size="Size.Small" Color="Color.Warning" Variant="Variant.Outlined">Hybrid Join</MudChip>
+                        }
+                        @foreach (var control in context.GrantControls.Take(2))
+                        {
+                            <MudChip Size="Size.Small" Color="Color.Default" Variant="Variant.Outlined">@control</MudChip>
+                        }
+                    </div>
+                </MudTd>
+                <MudTd>
+                    <MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="Size.Small"
+                                   OnClick="@(() => ViewPolicyDetails(context))" />
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText Typo="Typo.body1" Class="pa-4 text-center">No Conditional Access policies found.</MudText>
+            </NoRecordsContent>
+        </MudTable>
+    </MudPaper>
+}
+
+<!-- Policy Details Dialog -->
+<MudDialog @bind-Visible="_showPolicyDialog" Options="_dialogOptions">
+    <DialogContent>
+        @if (_selectedPolicy != null)
+        {
+            <MudGrid>
+                <MudItem xs="12">
+                    <div class="d-flex align-center mb-4">
+                        <MudIcon Icon="@Icons.Material.Filled.Policy" Size="Size.Large" Color="Color.Primary" Class="mr-3" />
+                        <div>
+                            <MudText Typo="Typo.h6">@_selectedPolicy.DisplayName</MudText>
+                            <MudChip Size="Size.Small" Color="@GetStateColor(_selectedPolicy.State)">@GetStateLabel(_selectedPolicy.State)</MudChip>
+                        </div>
+                    </div>
+                </MudItem>
+                <MudItem xs="12">
+                    <MudText Typo="Typo.subtitle2" Class="mb-2">Conditions</MudText>
+                </MudItem>
+                <MudItem xs="6">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Include Users</MudText>
+                    <div class="d-flex flex-wrap gap-1 mt-1">
+                        @if (_selectedPolicy.IncludeAllUsers)
+                        {
+                            <MudChip Size="Size.Small" Color="Color.Primary">All Users</MudChip>
+                        }
+                        else
+                        {
+                            @foreach (var user in _selectedPolicy.IncludeUsers.Take(5))
+                            {
+                                <MudChip Size="Size.Small" Color="Color.Default" Variant="Variant.Outlined">@user</MudChip>
+                            }
+                            @if (_selectedPolicy.IncludeUsers.Count > 5)
+                            {
+                                <MudChip Size="Size.Small" Color="Color.Secondary">+@(_selectedPolicy.IncludeUsers.Count - 5) more</MudChip>
+                            }
+                        }
+                    </div>
+                </MudItem>
+                <MudItem xs="6">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Exclude Users</MudText>
+                    <div class="d-flex flex-wrap gap-1 mt-1">
+                        @foreach (var user in _selectedPolicy.ExcludeUsers.Take(5))
+                        {
+                            <MudChip Size="Size.Small" Color="Color.Warning" Variant="Variant.Outlined">@user</MudChip>
+                        }
+                        @if (_selectedPolicy.ExcludeUsers.Count > 5)
+                        {
+                            <MudChip Size="Size.Small" Color="Color.Secondary">+@(_selectedPolicy.ExcludeUsers.Count - 5) more</MudChip>
+                        }
+                        @if (!_selectedPolicy.ExcludeUsers.Any())
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">None</MudText>
+                        }
+                    </div>
+                </MudItem>
+                <MudItem xs="6">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Include Applications</MudText>
+                    <div class="d-flex flex-wrap gap-1 mt-1">
+                        @if (_selectedPolicy.IncludeAllApplications)
+                        {
+                            <MudChip Size="Size.Small" Color="Color.Primary">All Applications</MudChip>
+                        }
+                        else
+                        {
+                            @foreach (var app in _selectedPolicy.IncludeApplications.Take(5))
+                            {
+                                <MudChip Size="Size.Small" Color="Color.Default" Variant="Variant.Outlined">@app</MudChip>
+                            }
+                        }
+                    </div>
+                </MudItem>
+                <MudItem xs="6">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Exclude Applications</MudText>
+                    <div class="d-flex flex-wrap gap-1 mt-1">
+                        @foreach (var app in _selectedPolicy.ExcludeApplications.Take(5))
+                        {
+                            <MudChip Size="Size.Small" Color="Color.Warning" Variant="Variant.Outlined">@app</MudChip>
+                        }
+                        @if (!_selectedPolicy.ExcludeApplications.Any())
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">None</MudText>
+                        }
+                    </div>
+                </MudItem>
+                <MudItem xs="12">
+                    <MudDivider Class="my-2" />
+                    <MudText Typo="Typo.subtitle2" Class="mb-2">Grant Controls</MudText>
+                    <div class="d-flex flex-wrap gap-1">
+                        @foreach (var control in _selectedPolicy.GrantControls)
+                        {
+                            <MudChip Size="Size.Small" Color="Color.Info">@control</MudChip>
+                        }
+                    </div>
+                </MudItem>
+                @if (_selectedPolicy.SessionControls.Any())
+                {
+                    <MudItem xs="12">
+                        <MudDivider Class="my-2" />
+                        <MudText Typo="Typo.subtitle2" Class="mb-2">Session Controls</MudText>
+                        <div class="d-flex flex-wrap gap-1">
+                            @foreach (var control in _selectedPolicy.SessionControls)
+                            {
+                                <MudChip Size="Size.Small" Color="Color.Warning">@control</MudChip>
+                            }
+                        </div>
+                    </MudItem>
+                }
+            </MudGrid>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton Color="Color.Primary" OnClick="@(() => _showPolicyDialog = false)">Close</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [SupplyParameterFromQuery]
+    public Guid? TenantId { get; set; }
+
+    private bool _isLoading = true;
+    private List<TenantDto> _tenants = new();
+    private Guid? _selectedTenantId;
+    private List<ConditionalAccessPolicyDto> _policies = new();
+    private ConditionalAccessPolicyDto? _selectedPolicy;
+    private bool _showPolicyDialog = false;
+    private DialogOptions _dialogOptions = new() { MaxWidth = MaxWidth.Large, FullWidth = true };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadTenantsAsync();
+        _selectedTenantId = TenantId ?? _tenants.FirstOrDefault()?.Id;
+
+        if (_selectedTenantId.HasValue)
+            await LoadPoliciesAsync();
+
+        _isLoading = false;
+    }
+
+    private async Task LoadTenantsAsync()
+    {
+        try
+        {
+            _tenants = (await TenantService.GetAllAsync()).ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading tenants: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task LoadPoliciesAsync()
+    {
+        if (!_selectedTenantId.HasValue) return;
+
+        try
+        {
+            var result = await InventoryService.GetConditionalAccessPoliciesAsync(_selectedTenantId.Value);
+            _policies = result.ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading policies: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private void ViewPolicyDetails(ConditionalAccessPolicyDto policy)
+    {
+        _selectedPolicy = policy;
+        _showPolicyDialog = true;
+    }
+
+    private Color GetStateColor(string? state) => state?.ToLower() switch
+    {
+        "enabled" => Color.Success,
+        "enabledforreportingbutnotenforced" => Color.Warning,
+        "disabled" => Color.Default,
+        _ => Color.Secondary
+    };
+
+    private string GetStateLabel(string? state) => state?.ToLower() switch
+    {
+        "enabled" => "Enabled",
+        "enabledforreportingbutnotenforced" => "Report-Only",
+        "disabled" => "Disabled",
+        _ => state ?? "Unknown"
+    };
+}

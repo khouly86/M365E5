@@ -1,0 +1,327 @@
+@page "/inventory/defender/office365"
+@attribute [Authorize]
+@inject IInventoryService InventoryService
+@inject ITenantService TenantService
+@inject ISnackbar Snackbar
+
+<PageTitle>Defender for Office 365 - Cloudativ Assessment</PageTitle>
+
+<div class="d-flex justify-space-between align-center mb-4">
+    <div>
+        <MudText Typo="Typo.h5" Style="font-weight: 600; color: #51627A;">Defender for Office 365</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">Email security, anti-phishing, and threat protection policies</MudText>
+    </div>
+    <MudSelect T="Guid?" Label="Tenant" Value="_selectedTenantId" Dense="true"
+               Style="min-width: 200px;" Variant="Variant.Outlined"
+               ValueChanged="@(async (Guid? v) => { _selectedTenantId = v; await LoadDataAsync(); })">
+        @foreach (var tenant in _tenants)
+        {
+            <MudSelectItem Value="@((Guid?)tenant.Id)">@tenant.Name</MudSelectItem>
+        }
+    </MudSelect>
+</div>
+
+@if (_isLoading)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+}
+else if (_data == null)
+{
+    <MudAlert Severity="Severity.Info" Class="mb-4">
+        No Defender for Office 365 data available. Run an inventory collection to gather this data.
+    </MudAlert>
+}
+else
+{
+    <!-- Quick Stats -->
+    <MudGrid Class="mb-4">
+        <MudItem xs="6" sm="3">
+            <MudPaper Class="pa-4" Elevation="1" Style="border-radius: 12px; border-left: 3px solid #f44336;">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Malware (30 days)</MudText>
+                <MudText Typo="Typo.h4" Style="font-weight: 600; color: #f44336;">@_data.Last30DaysMalwareCount</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="6" sm="3">
+            <MudPaper Class="pa-4" Elevation="1" Style="border-radius: 12px; border-left: 3px solid #ff9800;">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Phishing (30 days)</MudText>
+                <MudText Typo="Typo.h4" Style="font-weight: 600; color: #ff9800;">@_data.Last30DaysPhishCount</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="6" sm="3">
+            <MudPaper Class="pa-4" Elevation="1" Style="border-radius: 12px; border-left: 3px solid #9e9e9e;">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Spam (30 days)</MudText>
+                <MudText Typo="Typo.h4" Style="font-weight: 600;">@_data.Last30DaysSpamCount</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="6" sm="3">
+            <MudPaper Class="pa-4" Elevation="1" Style="border-radius: 12px; border-left: 3px solid #4CAF50;">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Blocked (30 days)</MudText>
+                <MudText Typo="Typo.h4" Style="font-weight: 600; color: #4CAF50;">@_data.Last30DaysBlockedCount</MudText>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    <!-- Safe Links & Safe Attachments -->
+    <MudGrid Class="mb-4">
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-4" Elevation="2" Style="border-radius: 12px;">
+                <div class="d-flex align-center mb-3">
+                    <MudIcon Icon="@Icons.Material.Filled.Link" Color="Color.Primary" Class="mr-2" />
+                    <MudText Typo="Typo.subtitle1" Style="font-weight: 600;">Safe Links</MudText>
+                    <MudSpacer />
+                    <MudChip Size="Size.Small" Color="@(_data.SafeLinksEnabled ? Color.Success : Color.Error)">
+                        @(_data.SafeLinksEnabled ? "Enabled" : "Disabled")
+                    </MudChip>
+                </div>
+                <MudSimpleTable Dense="true">
+                    <tbody>
+                        <tr>
+                            <td>Policy Count</td>
+                            <td style="text-align: right;">@_data.SafeLinksPolicyCount</td>
+                        </tr>
+                        <tr>
+                            <td>Office Apps Protection</td>
+                            <td style="text-align: right;">
+                                <MudIcon Icon="@(_data.SafeLinksForOfficeApps ? Icons.Material.Filled.Check : Icons.Material.Filled.Close)"
+                                         Color="@(_data.SafeLinksForOfficeApps ? Color.Success : Color.Error)" Size="Size.Small" />
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>Track User Clicks</td>
+                            <td style="text-align: right;">
+                                <MudIcon Icon="@(_data.SafeLinksTrackUserClicks ? Icons.Material.Filled.Check : Icons.Material.Filled.Close)"
+                                         Color="@(_data.SafeLinksTrackUserClicks ? Color.Success : Color.Error)" Size="Size.Small" />
+                            </td>
+                        </tr>
+                    </tbody>
+                </MudSimpleTable>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-4" Elevation="2" Style="border-radius: 12px;">
+                <div class="d-flex align-center mb-3">
+                    <MudIcon Icon="@Icons.Material.Filled.AttachFile" Color="Color.Primary" Class="mr-2" />
+                    <MudText Typo="Typo.subtitle1" Style="font-weight: 600;">Safe Attachments</MudText>
+                    <MudSpacer />
+                    <MudChip Size="Size.Small" Color="@(_data.SafeAttachmentsEnabled ? Color.Success : Color.Error)">
+                        @(_data.SafeAttachmentsEnabled ? "Enabled" : "Disabled")
+                    </MudChip>
+                </div>
+                <MudSimpleTable Dense="true">
+                    <tbody>
+                        <tr>
+                            <td>Policy Count</td>
+                            <td style="text-align: right;">@_data.SafeAttachmentsPolicyCount</td>
+                        </tr>
+                        <tr>
+                            <td>Mode</td>
+                            <td style="text-align: right;">@(_data.SafeAttachmentsMode ?? "Not Set")</td>
+                        </tr>
+                        <tr>
+                            <td>SharePoint/OneDrive/Teams</td>
+                            <td style="text-align: right;">
+                                <MudIcon Icon="@(_data.SafeAttachmentsForSharePoint ? Icons.Material.Filled.Check : Icons.Material.Filled.Close)"
+                                         Color="@(_data.SafeAttachmentsForSharePoint ? Color.Success : Color.Error)" Size="Size.Small" />
+                            </td>
+                        </tr>
+                    </tbody>
+                </MudSimpleTable>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    <!-- Anti-Phishing -->
+    <MudText Typo="Typo.h6" Class="mb-3" Style="color: #51627A;">Anti-Phishing Protection</MudText>
+    <MudPaper Class="pa-4 mb-4" Elevation="2" Style="border-radius: 12px;">
+        <MudGrid>
+            <MudItem xs="12" md="4">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Anti-Phish Policies</MudText>
+                <MudText Typo="Typo.h5" Style="font-weight: 600;">@_data.AntiPhishPolicyCount</MudText>
+            </MudItem>
+            <MudItem xs="6" md="4">
+                <div class="d-flex align-center">
+                    <MudIcon Icon="@(_data.ImpersonationProtectionEnabled ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.Cancel)"
+                             Color="@(_data.ImpersonationProtectionEnabled ? Color.Success : Color.Error)" Class="mr-2" />
+                    <MudText Typo="Typo.body2">Impersonation Protection</MudText>
+                </div>
+            </MudItem>
+            <MudItem xs="6" md="4">
+                <div class="d-flex align-center">
+                    <MudIcon Icon="@(_data.MailboxIntelligenceEnabled ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.Cancel)"
+                             Color="@(_data.MailboxIntelligenceEnabled ? Color.Success : Color.Error)" Class="mr-2" />
+                    <MudText Typo="Typo.body2">Mailbox Intelligence</MudText>
+                </div>
+            </MudItem>
+            <MudItem xs="6" md="4">
+                <div class="d-flex align-center">
+                    <MudIcon Icon="@(_data.SpoofIntelligenceEnabled ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.Cancel)"
+                             Color="@(_data.SpoofIntelligenceEnabled ? Color.Success : Color.Error)" Class="mr-2" />
+                    <MudText Typo="Typo.body2">Spoof Intelligence</MudText>
+                </div>
+            </MudItem>
+            <MudItem xs="6" md="4">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Protected Users</MudText>
+                <MudText Typo="Typo.body1" Style="font-weight: 500;">@_data.ProtectedUsersCount</MudText>
+            </MudItem>
+            <MudItem xs="6" md="4">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Protected Domains</MudText>
+                <MudText Typo="Typo.body1" Style="font-weight: 500;">@_data.ProtectedDomainsCount</MudText>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    <!-- Anti-Spam & Anti-Malware -->
+    <MudGrid Class="mb-4">
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-4" Elevation="2" Style="border-radius: 12px;">
+                <MudText Typo="Typo.subtitle1" Style="font-weight: 600;" Class="mb-3">Anti-Spam</MudText>
+                <MudSimpleTable Dense="true">
+                    <tbody>
+                        <tr>
+                            <td>Policy Count</td>
+                            <td style="text-align: right;">@_data.AntiSpamPolicyCount</td>
+                        </tr>
+                        <tr>
+                            <td>Default Spam Action</td>
+                            <td style="text-align: right;">@(_data.DefaultSpamAction ?? "Not Set")</td>
+                        </tr>
+                        <tr>
+                            <td>High Confidence Action</td>
+                            <td style="text-align: right;">@(_data.HighConfidenceSpamAction ?? "Not Set")</td>
+                        </tr>
+                    </tbody>
+                </MudSimpleTable>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-4" Elevation="2" Style="border-radius: 12px;">
+                <MudText Typo="Typo.subtitle1" Style="font-weight: 600;" Class="mb-3">Anti-Malware</MudText>
+                <MudSimpleTable Dense="true">
+                    <tbody>
+                        <tr>
+                            <td>Policy Count</td>
+                            <td style="text-align: right;">@_data.AntiMalwarePolicyCount</td>
+                        </tr>
+                        <tr>
+                            <td>Common Attachment Filter</td>
+                            <td style="text-align: right;">
+                                <MudIcon Icon="@(_data.CommonAttachmentTypesFilter ? Icons.Material.Filled.Check : Icons.Material.Filled.Close)"
+                                         Color="@(_data.CommonAttachmentTypesFilter ? Color.Success : Color.Error)" Size="Size.Small" />
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>Zero-Hour Auto Purge</td>
+                            <td style="text-align: right;">
+                                <MudIcon Icon="@(_data.ZeroHourAutoPurgeEnabled ? Icons.Material.Filled.Check : Icons.Material.Filled.Close)"
+                                         Color="@(_data.ZeroHourAutoPurgeEnabled ? Color.Success : Color.Error)" Size="Size.Small" />
+                            </td>
+                        </tr>
+                    </tbody>
+                </MudSimpleTable>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    <!-- Email Authentication -->
+    <MudText Typo="Typo.h6" Class="mb-3" Style="color: #51627A;">Email Authentication</MudText>
+    <MudPaper Class="pa-4 mb-4" Elevation="2" Style="border-radius: 12px;">
+        <MudGrid>
+            <MudItem xs="12" md="4">
+                <MudPaper Class="pa-3" Elevation="0" Style="background: #f5f5f5; border-radius: 8px;">
+                    <div class="d-flex align-center mb-2">
+                        <MudText Typo="Typo.subtitle2" Style="font-weight: 600;">SPF</MudText>
+                        <MudSpacer />
+                        <MudChip Size="Size.Small" Color="@(_data.SpfConfigured ? Color.Success : Color.Error)">
+                            @(_data.SpfConfigured ? "Configured" : "Not Configured")
+                        </MudChip>
+                    </div>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Sender Policy Framework</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudPaper Class="pa-3" Elevation="0" Style="background: #f5f5f5; border-radius: 8px;">
+                    <div class="d-flex align-center mb-2">
+                        <MudText Typo="Typo.subtitle2" Style="font-weight: 600;">DKIM</MudText>
+                        <MudSpacer />
+                        <MudChip Size="Size.Small" Color="@(_data.DkimEnabled ? Color.Success : Color.Error)">
+                            @(_data.DkimEnabled ? "Enabled" : "Disabled")
+                        </MudChip>
+                    </div>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">@_data.DkimEnabledDomains domain(s) enabled</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudPaper Class="pa-3" Elevation="0" Style="background: #f5f5f5; border-radius: 8px;">
+                    <div class="d-flex align-center mb-2">
+                        <MudText Typo="Typo.subtitle2" Style="font-weight: 600;">DMARC</MudText>
+                        <MudSpacer />
+                        <MudChip Size="Size.Small" Color="@(_data.DmarcEnabled ? Color.Success : Color.Error)">
+                            @(_data.DmarcEnabled ? "Enabled" : "Disabled")
+                        </MudChip>
+                    </div>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Policy: @(_data.DmarcPolicy ?? "None")</MudText>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    @if (_data.CollectedAt.HasValue)
+    {
+        <MudText Typo="Typo.caption" Color="Color.Secondary">
+            Last collected: @_data.CollectedAt.Value.ToString("g") UTC
+        </MudText>
+    }
+}
+
+@code {
+    [SupplyParameterFromQuery]
+    public Guid? TenantId { get; set; }
+
+    private bool _isLoading = true;
+    private List<TenantDto> _tenants = new();
+    private Guid? _selectedTenantId;
+    private DefenderForOffice365Dto? _data;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadTenantsAsync();
+        _selectedTenantId = TenantId ?? _tenants.FirstOrDefault()?.Id;
+
+        if (_selectedTenantId.HasValue)
+            await LoadDataAsync();
+
+        _isLoading = false;
+    }
+
+    private async Task LoadTenantsAsync()
+    {
+        try
+        {
+            _tenants = (await TenantService.GetAllAsync()).ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading tenants: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task LoadDataAsync()
+    {
+        if (!_selectedTenantId.HasValue) return;
+
+        _isLoading = true;
+        try
+        {
+            _data = await InventoryService.GetDefenderForOffice365Async(_selectedTenantId.Value);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading data: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+}

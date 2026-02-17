@@ -2,6 +2,8 @@ using Cloudativ.Assessment.Application.Interfaces;
 using Cloudativ.Assessment.Domain.Interfaces;
 using Cloudativ.Assessment.Infrastructure.Data;
 using Cloudativ.Assessment.Infrastructure.Graph;
+using Cloudativ.Assessment.Infrastructure.Inventory;
+using Cloudativ.Assessment.Infrastructure.Inventory.Modules;
 using Cloudativ.Assessment.Infrastructure.Modules;
 using Cloudativ.Assessment.Infrastructure.Services;
 using Hangfire;
@@ -60,6 +62,7 @@ public static class DependencyInjection
         services.AddScoped<IDashboardService, DashboardService>();
         services.AddScoped<IAssessmentService, AssessmentService>();
         services.AddScoped<IGraphClientFactory, GraphClientFactory>();
+        services.AddScoped<IAzureAdSetupService, AzureAdSetupService>();
         services.AddScoped<IAssessmentEngine, AssessmentEngine>();
         services.AddScoped<IReportService, ReportService>();
         services.AddScoped<IUserService, UserService>();
@@ -88,6 +91,16 @@ public static class DependencyInjection
         services.AddScoped<IAssessmentModule, AuditLoggingAssessmentModule>();
         services.AddScoped<IAssessmentModule, AppGovernanceAssessmentModule>();
         services.AddScoped<IAssessmentModule, CollaborationSecurityAssessmentModule>();
+
+        // Register Inventory Services
+        services.AddScoped<IInventoryService, InventoryService>();
+        services.AddScoped<IInventoryEngine, InventoryEngine>();
+        services.AddScoped<IInventoryExportService, InventoryExportService>();
+
+        // Register Inventory Modules
+        services.AddScoped<IInventoryModule, TenantBaselineInventoryModule>();
+        services.AddScoped<IInventoryModule, IdentityAccessInventoryModule>();
+        services.AddScoped<IInventoryModule, SharePointOneDriveTeamsInventoryModule>();
 
         // Configure Hangfire
         services.AddHangfire(config =>

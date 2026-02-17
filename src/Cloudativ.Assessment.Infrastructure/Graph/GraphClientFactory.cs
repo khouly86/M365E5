@@ -12,6 +12,7 @@ public interface IGraphClientFactory
     Task<IGraphClientWrapper> CreateClientAsync(Tenant tenant, CancellationToken cancellationToken = default);
     Task<IGraphClientWrapper> CreateClientAsync(string clientId, string clientSecret, string tenantId, CancellationToken cancellationToken = default);
     Task<IGraphClientWrapper> CreateDelegatedClientAsync(string tenantId, CancellationToken cancellationToken = default);
+    Task<IGraphClientWrapper> CreateDelegatedSetupClientAsync(string tenantId, CancellationToken cancellationToken = default);
 }
 
 public class GraphClientFactory : IGraphClientFactory
@@ -71,6 +72,32 @@ public class GraphClientFactory : IGraphClientFactory
         {
             "https://graph.microsoft.com/User.Read.All",
             "https://graph.microsoft.com/Directory.Read.All",
+            "https://graph.microsoft.com/Organization.Read.All"
+        };
+
+        var options = new InteractiveBrowserCredentialOptions
+        {
+            AuthorityHost = AzureAuthorityHosts.AzurePublicCloud,
+            TenantId = tenantId,
+            RedirectUri = new Uri("http://localhost")
+        };
+
+        var credential = new InteractiveBrowserCredential(options);
+
+        var graphClient = new GraphServiceClient(credential, scopes);
+
+        return Task.FromResult<IGraphClientWrapper>(new GraphClientWrapper(graphClient, credential, _wrapperLogger));
+    }
+
+    public Task<IGraphClientWrapper> CreateDelegatedSetupClientAsync(string tenantId, CancellationToken cancellationToken = default)
+    {
+        // Elevated delegated scopes required to create app registrations,
+        // service principals, and grant admin consent
+        var scopes = new[]
+        {
+            "https://graph.microsoft.com/Application.ReadWrite.All",
+            "https://graph.microsoft.com/AppRoleAssignment.ReadWrite.All",
+            "https://graph.microsoft.com/Directory.ReadWrite.All",
             "https://graph.microsoft.com/Organization.Read.All"
         };
 

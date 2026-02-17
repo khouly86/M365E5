@@ -1,0 +1,269 @@
+@page "/inventory/defender/identity"
+@attribute [Authorize]
+@inject IInventoryService InventoryService
+@inject ITenantService TenantService
+@inject ISnackbar Snackbar
+
+<PageTitle>Defender for Identity - Cloudativ Assessment</PageTitle>
+
+<div class="d-flex justify-space-between align-center mb-4">
+    <div>
+        <MudText Typo="Typo.h5" Style="font-weight: 600; color: #51627A;">Defender for Identity</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">On-premises Active Directory monitoring and threat detection</MudText>
+    </div>
+    <MudSelect T="Guid?" Label="Tenant" Value="_selectedTenantId" Dense="true"
+               Style="min-width: 200px;" Variant="Variant.Outlined"
+               ValueChanged="@(async (Guid? v) => { _selectedTenantId = v; await LoadDataAsync(); })">
+        @foreach (var tenant in _tenants)
+        {
+            <MudSelectItem Value="@((Guid?)tenant.Id)">@tenant.Name</MudSelectItem>
+        }
+    </MudSelect>
+</div>
+
+@if (_isLoading)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+}
+else if (_data == null)
+{
+    <MudAlert Severity="Severity.Info" Class="mb-4">
+        No Defender for Identity data available. Run an inventory collection to gather this data.
+    </MudAlert>
+}
+else if (!_data.IsConfigured)
+{
+    <MudAlert Severity="Severity.Warning" Class="mb-4">
+        Defender for Identity is not configured for this tenant.
+    </MudAlert>
+}
+else
+{
+    <!-- Configuration Status -->
+    <MudGrid Class="mb-4">
+        <MudItem xs="6" sm="3">
+            <MudPaper Class="pa-4" Elevation="1" Style="border-radius: 12px;">
+                <div class="d-flex align-center mb-2">
+                    <MudIcon Icon="@Icons.Material.Filled.Settings" Color="Color.Primary" Class="mr-2" />
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Status</MudText>
+                </div>
+                <MudChip Size="Size.Small" Color="@(_data.IsConfigured ? Color.Success : Color.Error)">
+                    @(_data.IsConfigured ? "Configured" : "Not Configured")
+                </MudChip>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="6" sm="3">
+            <MudPaper Class="pa-4" Elevation="1" Style="border-radius: 12px;">
+                <div class="d-flex align-center mb-2">
+                    <MudIcon Icon="@Icons.Material.Filled.CardMembership" Color="Color.Primary" Class="mr-2" />
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">License</MudText>
+                </div>
+                <MudChip Size="Size.Small" Color="@(_data.IsLicensed ? Color.Success : Color.Warning)">
+                    @(_data.IsLicensed ? "Licensed" : "Not Licensed")
+                </MudChip>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="6" sm="3">
+            <MudPaper Class="pa-4" Elevation="1" Style="border-radius: 12px;">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">DC Coverage</MudText>
+                <MudText Typo="Typo.h4" Style="font-weight: 600;">@(_data.CoveragePercentage.ToString("P0"))</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                    @_data.DomainControllersCovered of @_data.TotalDomainControllers DCs
+                </MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="6" sm="3">
+            <MudPaper Class="pa-4" Elevation="1" Style="@($"border-radius: 12px; border-left: 3px solid {(_data.OpenHealthIssues > 0 ? "#f44336" : "#4CAF50")};")">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Health Issues</MudText>
+                <MudText Typo="Typo.h4" Style="@($"font-weight: 600; color: {(_data.OpenHealthIssues > 0 ? "#f44336" : "#4CAF50")};")">
+                    @_data.OpenHealthIssues
+                </MudText>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    <!-- Sensor Status -->
+    <MudText Typo="Typo.h6" Class="mb-3" Style="color: #51627A;">Sensor Health</MudText>
+    <MudGrid Class="mb-4">
+        <MudItem xs="6" sm="3">
+            <MudPaper Class="pa-4" Elevation="1" Style="border-radius: 12px;">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Total Sensors</MudText>
+                <MudText Typo="Typo.h4" Style="font-weight: 600;">@_data.SensorCount</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="6" sm="3">
+            <MudPaper Class="pa-4" Elevation="1" Style="border-radius: 12px; border-left: 3px solid #4CAF50;">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Healthy</MudText>
+                <MudText Typo="Typo.h4" Style="font-weight: 600; color: #4CAF50;">@_data.HealthySensors</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="6" sm="3">
+            <MudPaper Class="pa-4" Elevation="1" Style="border-radius: 12px; border-left: 3px solid #ff9800;">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Unhealthy</MudText>
+                <MudText Typo="Typo.h4" Style="font-weight: 600; color: #ff9800;">@_data.UnhealthySensors</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="6" sm="3">
+            <MudPaper Class="pa-4" Elevation="1" Style="border-radius: 12px; border-left: 3px solid #f44336;">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Offline</MudText>
+                <MudText Typo="Typo.h4" Style="font-weight: 600; color: #f44336;">@_data.OfflineSensors</MudText>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    <!-- Health Issues & Alerts -->
+    <MudGrid Class="mb-4">
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-4" Elevation="2" Style="border-radius: 12px;">
+                <MudText Typo="Typo.subtitle1" Style="font-weight: 600;" Class="mb-3">Health Issues by Severity</MudText>
+                <MudSimpleTable Dense="true" Hover="true">
+                    <thead>
+                        <tr>
+                            <th>Severity</th>
+                            <th style="text-align: right;">Count</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><MudChip Size="Size.Small" Color="Color.Error">High</MudChip></td>
+                            <td style="text-align: right;">@_data.HighSeverityHealthIssues</td>
+                        </tr>
+                        <tr>
+                            <td><MudChip Size="Size.Small" Color="Color.Warning">Medium</MudChip></td>
+                            <td style="text-align: right;">@_data.MediumSeverityHealthIssues</td>
+                        </tr>
+                        <tr>
+                            <td><MudChip Size="Size.Small" Color="Color.Info">Low</MudChip></td>
+                            <td style="text-align: right;">@_data.LowSeverityHealthIssues</td>
+                        </tr>
+                    </tbody>
+                </MudSimpleTable>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-4" Elevation="2" Style="border-radius: 12px;">
+                <MudText Typo="Typo.subtitle1" Style="font-weight: 600;" Class="mb-3">Security Alerts</MudText>
+                <MudSimpleTable Dense="true" Hover="true">
+                    <thead>
+                        <tr>
+                            <th>Severity</th>
+                            <th style="text-align: right;">Count</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><MudChip Size="Size.Small" Color="Color.Error">High</MudChip></td>
+                            <td style="text-align: right;">@_data.HighSeverityAlerts</td>
+                        </tr>
+                        <tr>
+                            <td><MudChip Size="Size.Small" Color="Color.Warning">Medium</MudChip></td>
+                            <td style="text-align: right;">@_data.MediumSeverityAlerts</td>
+                        </tr>
+                        <tr>
+                            <td><MudChip Size="Size.Small" Color="Color.Info">Low</MudChip></td>
+                            <td style="text-align: right;">@_data.LowSeverityAlerts</td>
+                        </tr>
+                        <tr>
+                            <td><MudText Typo="Typo.body2" Color="Color.Secondary">Last 30 Days Total</MudText></td>
+                            <td style="text-align: right; font-weight: 600;">@_data.Last30DaysAlerts</td>
+                        </tr>
+                    </tbody>
+                </MudSimpleTable>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    <!-- Detection Configuration -->
+    <MudText Typo="Typo.h6" Class="mb-3" Style="color: #51627A;">Detection Configuration</MudText>
+    <MudPaper Class="pa-4 mb-4" Elevation="2" Style="border-radius: 12px;">
+        <MudGrid>
+            <MudItem xs="12" md="4">
+                <div class="d-flex align-center">
+                    <MudIcon Icon="@(_data.HoneytokenAccountsConfigured ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.Cancel)"
+                             Color="@(_data.HoneytokenAccountsConfigured ? Color.Success : Color.Error)" Class="mr-2" />
+                    <div>
+                        <MudText Typo="Typo.body2">Honeytoken Accounts</MudText>
+                        @if (_data.HoneytokenAccountsConfigured)
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">@_data.HoneytokenAccountCount configured</MudText>
+                        }
+                    </div>
+                </div>
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <div class="d-flex align-center">
+                    <MudIcon Icon="@(_data.SensitiveGroupsConfigured ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.Cancel)"
+                             Color="@(_data.SensitiveGroupsConfigured ? Color.Success : Color.Error)" Class="mr-2" />
+                    <MudText Typo="Typo.body2">Sensitive Groups Configured</MudText>
+                </div>
+            </MudItem>
+            @if (!string.IsNullOrEmpty(_data.WorkspaceId))
+            {
+                <MudItem xs="12" md="4">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Workspace ID</MudText>
+                    <MudText Typo="Typo.body2" Style="font-family: monospace;">@_data.WorkspaceId</MudText>
+                </MudItem>
+            }
+        </MudGrid>
+    </MudPaper>
+
+    @if (_data.CollectedAt.HasValue)
+    {
+        <MudText Typo="Typo.caption" Color="Color.Secondary">
+            Last collected: @_data.CollectedAt.Value.ToString("g") UTC
+        </MudText>
+    }
+}
+
+@code {
+    [SupplyParameterFromQuery]
+    public Guid? TenantId { get; set; }
+
+    private bool _isLoading = true;
+    private List<TenantDto> _tenants = new();
+    private Guid? _selectedTenantId;
+    private DefenderForIdentityDto? _data;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadTenantsAsync();
+        _selectedTenantId = TenantId ?? _tenants.FirstOrDefault()?.Id;
+
+        if (_selectedTenantId.HasValue)
+            await LoadDataAsync();
+
+        _isLoading = false;
+    }
+
+    private async Task LoadTenantsAsync()
+    {
+        try
+        {
+            _tenants = (await TenantService.GetAllAsync()).ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading tenants: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task LoadDataAsync()
+    {
+        if (!_selectedTenantId.HasValue) return;
+
+        _isLoading = true;
+        try
+        {
+            _data = await InventoryService.GetDefenderForIdentityAsync(_selectedTenantId.Value);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading data: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+}

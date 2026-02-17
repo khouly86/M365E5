@@ -1,0 +1,44 @@
+@using MudBlazor
+@inject NavigationManager NavigationManager
+@inject ISnackbar Snackbar
+
+<MudMenu Icon="@Icons.Material.Filled.Download" Label="Export" Variant="Variant.Outlined"
+         EndIcon="@Icons.Material.Filled.KeyboardArrowDown" IconColor="Color.Primary">
+    <MudMenuItem Icon="@Icons.Custom.FileFormats.FileExcel" IconColor="Color.Success"
+                 OnClick="@(() => Export("excel"))">
+        Export to Excel
+    </MudMenuItem>
+    <MudMenuItem Icon="@Icons.Custom.FileFormats.FilePdf" IconColor="Color.Error"
+                 OnClick="@(() => Export("pdf"))">
+        Export to PDF
+    </MudMenuItem>
+</MudMenu>
+
+@code {
+    [Parameter]
+    public string ExportType { get; set; } = "users";
+
+    [Parameter]
+    public Guid? TenantId { get; set; }
+
+    [Parameter]
+    public string? QueryString { get; set; }
+
+    private void Export(string format)
+    {
+        if (!TenantId.HasValue)
+        {
+            Snackbar.Add("Please select a tenant first.", Severity.Warning);
+            return;
+        }
+
+        var url = $"/api/inventory/export/{ExportType}/{TenantId.Value}/{format}";
+        if (!string.IsNullOrEmpty(QueryString))
+        {
+            url += "?" + QueryString;
+        }
+
+        NavigationManager.NavigateTo(url, forceLoad: true);
+        Snackbar.Add($"Export started. Your {(format == "excel" ? "Excel" : "PDF")} file will download shortly.", Severity.Success);
+    }
+}

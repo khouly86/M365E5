@@ -1,0 +1,323 @@
+@page "/inventory/teams"
+@attribute [Authorize]
+@inject IInventoryService InventoryService
+@inject ITenantService TenantService
+@inject ISnackbar Snackbar
+
+<PageTitle>Teams Inventory - Cloudativ Assessment</PageTitle>
+
+<div class="d-flex justify-space-between align-center mb-4">
+    <div>
+        <MudText Typo="Typo.h5" Style="font-weight: 600; color: #51627A;">Microsoft Teams</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">Teams, channels, and membership overview</MudText>
+    </div>
+    <div class="d-flex gap-2 align-center">
+        <MudSelect T="Guid?" Label="Tenant" Value="_selectedTenantId" Dense="true"
+                   Style="min-width: 200px;" Variant="Variant.Outlined"
+                   ValueChanged="@(async (Guid? v) => { _selectedTenantId = v; await LoadDataAsync(); })">
+            @foreach (var tenant in _tenants)
+            {
+                <MudSelectItem Value="@((Guid?)tenant.Id)">@tenant.Name</MudSelectItem>
+            }
+        </MudSelect>
+        <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Download">Export</MudButton>
+    </div>
+</div>
+
+<!-- Quick Stats -->
+<MudGrid Class="mb-4">
+    <MudItem xs="6" sm="2">
+        <MudPaper Class="pa-3" Elevation="1" Style="border-radius: 8px;">
+            <MudText Typo="Typo.caption" Color="Color.Secondary">Total Teams</MudText>
+            <MudText Typo="Typo.h6" Style="font-weight: 600;">@_teams.Count</MudText>
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="6" sm="2">
+        <MudPaper Class="pa-3" Elevation="1" Style="border-radius: 8px; border-left: 3px solid #4CAF50;">
+            <MudText Typo="Typo.caption" Color="Color.Secondary">Active</MudText>
+            <MudText Typo="Typo.h6" Style="font-weight: 600; color: #4CAF50;">@_teams.Count(t => !t.IsArchived)</MudText>
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="6" sm="2">
+        <MudPaper Class="pa-3" Elevation="1" Style="border-radius: 8px; border-left: 3px solid #9e9e9e;">
+            <MudText Typo="Typo.caption" Color="Color.Secondary">Archived</MudText>
+            <MudText Typo="Typo.h6" Style="font-weight: 600;">@_teams.Count(t => t.IsArchived)</MudText>
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="6" sm="2">
+        <MudPaper Class="pa-3" Elevation="1" Style="border-radius: 8px; border-left: 3px solid #ff9800;">
+            <MudText Typo="Typo.caption" Color="Color.Secondary">With Guests</MudText>
+            <MudText Typo="Typo.h6" Style="font-weight: 600; color: #ff9800;">@_teams.Count(t => t.GuestCount > 0)</MudText>
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="6" sm="2">
+        <MudPaper Class="pa-3" Elevation="1" Style="border-radius: 8px; border-left: 3px solid #2196F3;">
+            <MudText Typo="Typo.caption" Color="Color.Secondary">Total Members</MudText>
+            <MudText Typo="Typo.h6" Style="font-weight: 600;">@_teams.Sum(t => t.MemberCount).ToString("N0")</MudText>
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="6" sm="2">
+        <MudPaper Class="pa-3" Elevation="1" Style="border-radius: 8px; border-left: 3px solid #9C27B0;">
+            <MudText Typo="Typo.caption" Color="Color.Secondary">Private Channels</MudText>
+            <MudText Typo="Typo.h6" Style="font-weight: 600;">@_teams.Sum(t => t.PrivateChannelCount)</MudText>
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
+@if (_isLoading)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+}
+else
+{
+    <MudPaper Elevation="2" Style="border-radius: 12px;">
+        <MudTable Items="_teams" Dense="true" Hover="true" Striped="true"
+                  Filter="new Func<TeamsDto, bool>(FilterFunc)">
+            <ToolBarContent>
+                <MudTextField @bind-Value="_searchString" Placeholder="Search teams..." Adornment="Adornment.Start"
+                              AdornmentIcon="@Icons.Material.Filled.Search" Immediate="true" Class="mt-0" />
+                <MudSpacer />
+                <MudChip Color="@(_showWithGuestsOnly ? Color.Warning : Color.Default)"
+                         Variant="@(_showWithGuestsOnly ? Variant.Filled : Variant.Outlined)"
+                         OnClick="@(() => _showWithGuestsOnly = !_showWithGuestsOnly)">
+                    With Guests Only
+                </MudChip>
+            </ToolBarContent>
+            <HeaderContent>
+                <MudTh>Team</MudTh>
+                <MudTh>Visibility</MudTh>
+                <MudTh>Members</MudTh>
+                <MudTh>Guests</MudTh>
+                <MudTh>Channels</MudTh>
+                <MudTh>Status</MudTh>
+                <MudTh>Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>
+                    <div class="d-flex align-center">
+                        <MudIcon Icon="@Icons.Material.Filled.Groups" Color="Color.Primary" Size="Size.Small" Class="mr-2" />
+                        <div>
+                            <MudText Typo="Typo.body2" Style="font-weight: 500;">@context.DisplayName</MudText>
+                            @if (!string.IsNullOrEmpty(context.Description))
+                            {
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                    @(context.Description.Length > 50 ? context.Description.Substring(0, 47) + "..." : context.Description)
+                                </MudText>
+                            }
+                        </div>
+                    </div>
+                </MudTd>
+                <MudTd>
+                    <MudChip Size="Size.Small"
+                             Color="@(context.Visibility == "Private" ? Color.Warning : Color.Success)"
+                             Variant="Variant.Outlined">
+                        @context.Visibility
+                    </MudChip>
+                </MudTd>
+                <MudTd>@context.MemberCount</MudTd>
+                <MudTd>
+                    @if (context.GuestCount > 0)
+                    {
+                        <MudChip Size="Size.Small" Color="Color.Warning" Variant="Variant.Filled">@context.GuestCount</MudChip>
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">0</MudText>
+                    }
+                </MudTd>
+                <MudTd>
+                    <div class="d-flex gap-1">
+                        <MudChip Size="Size.Small" Color="Color.Default" Variant="Variant.Outlined">
+                            @context.StandardChannelCount std
+                        </MudChip>
+                        @if (context.PrivateChannelCount > 0)
+                        {
+                            <MudChip Size="Size.Small" Color="Color.Info" Variant="Variant.Outlined">
+                                @context.PrivateChannelCount pvt
+                            </MudChip>
+                        }
+                        @if (context.SharedChannelCount > 0)
+                        {
+                            <MudChip Size="Size.Small" Color="Color.Warning" Variant="Variant.Outlined">
+                                @context.SharedChannelCount shared
+                            </MudChip>
+                        }
+                    </div>
+                </MudTd>
+                <MudTd>
+                    @if (context.IsArchived)
+                    {
+                        <MudChip Size="Size.Small" Color="Color.Default" Variant="Variant.Filled">Archived</MudChip>
+                    }
+                    else
+                    {
+                        <MudChip Size="Size.Small" Color="Color.Success" Variant="Variant.Filled">Active</MudChip>
+                    }
+                </MudTd>
+                <MudTd>
+                    <MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="Size.Small"
+                                   OnClick="@(() => ViewDetails(context))" />
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText Typo="Typo.body1" Class="pa-4 text-center">No teams found.</MudText>
+            </NoRecordsContent>
+            <PagerContent>
+                <MudTablePager PageSizeOptions="new int[] { 25, 50, 100, 250 }" />
+            </PagerContent>
+        </MudTable>
+    </MudPaper>
+}
+
+<!-- Team Details Dialog -->
+<MudDialog @bind-Visible="_showDialog" Options="_dialogOptions">
+    <DialogContent>
+        @if (_selectedTeam != null)
+        {
+            <MudGrid>
+                <MudItem xs="12">
+                    <div class="d-flex align-center mb-4">
+                        <MudIcon Icon="@Icons.Material.Filled.Groups" Color="Color.Primary" Size="Size.Large" Class="mr-3" />
+                        <div>
+                            <MudText Typo="Typo.h6">@_selectedTeam.DisplayName</MudText>
+                            <div class="d-flex gap-2 mt-1">
+                                <MudChip Size="Size.Small" Color="@(_selectedTeam.Visibility == "Private" ? Color.Warning : Color.Success)">
+                                    @_selectedTeam.Visibility
+                                </MudChip>
+                                @if (_selectedTeam.IsArchived)
+                                {
+                                    <MudChip Size="Size.Small" Color="Color.Default">Archived</MudChip>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                </MudItem>
+                <MudItem xs="6">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Team ID</MudText>
+                    <MudText Typo="Typo.body2">@_selectedTeam.TeamId</MudText>
+                </MudItem>
+                <MudItem xs="6">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Created</MudText>
+                    <MudText Typo="Typo.body2">@(_selectedTeam.CreatedDateTime?.ToString("MMM dd, yyyy") ?? "Unknown")</MudText>
+                </MudItem>
+                @if (!string.IsNullOrEmpty(_selectedTeam.Description))
+                {
+                    <MudItem xs="12">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Description</MudText>
+                        <MudText Typo="Typo.body2">@_selectedTeam.Description</MudText>
+                    </MudItem>
+                }
+                <MudItem xs="12">
+                    <MudDivider Class="my-2" />
+                    <MudText Typo="Typo.subtitle2" Class="mb-2">Membership</MudText>
+                </MudItem>
+                <MudItem xs="4">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Members</MudText>
+                    <MudText Typo="Typo.h6" Style="font-weight: 600;">@_selectedTeam.MemberCount</MudText>
+                </MudItem>
+                <MudItem xs="4">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Guests</MudText>
+                    <MudText Typo="Typo.h6" Style="@($"font-weight: 600; color: {(_selectedTeam.GuestCount > 0 ? "#ff9800" : "inherit")};")">
+                        @_selectedTeam.GuestCount
+                    </MudText>
+                </MudItem>
+                <MudItem xs="4">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Owners</MudText>
+                    <MudText Typo="Typo.h6" Style="font-weight: 600;">@_selectedTeam.OwnerCount</MudText>
+                </MudItem>
+                <MudItem xs="12">
+                    <MudDivider Class="my-2" />
+                    <MudText Typo="Typo.subtitle2" Class="mb-2">Channels</MudText>
+                </MudItem>
+                <MudItem xs="4">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Standard</MudText>
+                    <MudText Typo="Typo.h6" Style="font-weight: 600;">@_selectedTeam.StandardChannelCount</MudText>
+                </MudItem>
+                <MudItem xs="4">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Private</MudText>
+                    <MudText Typo="Typo.h6" Style="font-weight: 600;">@_selectedTeam.PrivateChannelCount</MudText>
+                </MudItem>
+                <MudItem xs="4">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Shared</MudText>
+                    <MudText Typo="Typo.h6" Style="font-weight: 600;">@_selectedTeam.SharedChannelCount</MudText>
+                </MudItem>
+            </MudGrid>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton Color="Color.Primary" OnClick="@(() => _showDialog = false)">Close</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [SupplyParameterFromQuery]
+    public Guid? TenantId { get; set; }
+
+    private bool _isLoading = true;
+    private List<TenantDto> _tenants = new();
+    private Guid? _selectedTenantId;
+    private List<TeamsDto> _teams = new();
+    private TeamsDto? _selectedTeam;
+    private bool _showDialog = false;
+    private DialogOptions _dialogOptions = new() { MaxWidth = MaxWidth.Medium, FullWidth = true };
+    private string _searchString = "";
+    private bool _showWithGuestsOnly = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadTenantsAsync();
+        _selectedTenantId = TenantId ?? _tenants.FirstOrDefault()?.Id;
+
+        if (_selectedTenantId.HasValue)
+            await LoadDataAsync();
+
+        _isLoading = false;
+    }
+
+    private async Task LoadTenantsAsync()
+    {
+        try
+        {
+            _tenants = (await TenantService.GetAllAsync()).ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading tenants: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task LoadDataAsync()
+    {
+        if (!_selectedTenantId.HasValue) return;
+
+        _isLoading = true;
+        try
+        {
+            var filter = new TeamsFilter { TenantId = _selectedTenantId.Value, PageSize = 500 };
+            var result = await InventoryService.GetTeamsAsync(_selectedTenantId.Value, filter);
+            _teams = result.Items.ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading data: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private bool FilterFunc(TeamsDto team)
+    {
+        if (_showWithGuestsOnly && team.GuestCount == 0) return false;
+        if (string.IsNullOrWhiteSpace(_searchString)) return true;
+        return team.DisplayName.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ||
+               (team.Description?.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ?? false);
+    }
+
+    private void ViewDetails(TeamsDto team)
+    {
+        _selectedTeam = team;
+        _showDialog = true;
+    }
+}

@@ -1,0 +1,333 @@
+@page "/inventory/defender/cloud-apps"
+@attribute [Authorize]
+@inject IInventoryService InventoryService
+@inject ITenantService TenantService
+@inject ISnackbar Snackbar
+
+<PageTitle>Defender for Cloud Apps - Cloudativ Assessment</PageTitle>
+
+<div class="d-flex justify-space-between align-center mb-4">
+    <div>
+        <MudText Typo="Typo.h5" Style="font-weight: 600; color: #51627A;">Defender for Cloud Apps</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">Cloud app security, OAuth governance, and shadow IT discovery</MudText>
+    </div>
+    <MudSelect T="Guid?" Label="Tenant" Value="_selectedTenantId" Dense="true"
+               Style="min-width: 200px;" Variant="Variant.Outlined"
+               ValueChanged="@(async (Guid? v) => { _selectedTenantId = v; await LoadDataAsync(); })">
+        @foreach (var tenant in _tenants)
+        {
+            <MudSelectItem Value="@((Guid?)tenant.Id)">@tenant.Name</MudSelectItem>
+        }
+    </MudSelect>
+</div>
+
+@if (_isLoading)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+}
+else if (_data == null)
+{
+    <MudAlert Severity="Severity.Info" Class="mb-4">
+        No Defender for Cloud Apps data available. Run an inventory collection to gather this data.
+    </MudAlert>
+}
+else
+{
+    <!-- Quick Stats -->
+    <MudGrid Class="mb-4">
+        <MudItem xs="6" sm="3">
+            <MudPaper Class="pa-4" Elevation="1" Style="border-radius: 12px;">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Connected Apps</MudText>
+                <MudText Typo="Typo.h4" Style="font-weight: 600; color: #4CAF50;">@_data.ConnectedAppCount</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="6" sm="3">
+            <MudPaper Class="pa-4" Elevation="1" Style="border-radius: 12px;">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Discovered Apps</MudText>
+                <MudText Typo="Typo.h4" Style="font-weight: 600;">@_data.DiscoveredAppCount</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="6" sm="3">
+            <MudPaper Class="pa-4" Elevation="1" Style="border-radius: 12px; border-left: 3px solid #f44336;">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">High-Risk OAuth Apps</MudText>
+                <MudText Typo="Typo.h4" Style="font-weight: 600; color: #f44336;">@_data.HighRiskOAuthApps</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="6" sm="3">
+            <MudPaper Class="pa-4" Elevation="1" Style="@($"border-radius: 12px; border-left: 3px solid {(_data.OpenAlerts > 0 ? "#ff9800" : "#4CAF50")};")">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Open Alerts</MudText>
+                <MudText Typo="Typo.h4" Style="@($"font-weight: 600; color: {(_data.OpenAlerts > 0 ? "#ff9800" : "#4CAF50")};")">@_data.OpenAlerts</MudText>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    <!-- Connected Apps -->
+    <MudText Typo="Typo.h6" Class="mb-3" Style="color: #51627A;">Connected Cloud Services</MudText>
+    <MudPaper Class="pa-4 mb-4" Elevation="2" Style="border-radius: 12px;">
+        <MudGrid>
+            <MudItem xs="6" sm="3">
+                <div class="d-flex align-center">
+                    <MudIcon Icon="@(_data.Office365Connected ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.Cancel)"
+                             Color="@(_data.Office365Connected ? Color.Success : Color.Default)" Class="mr-2" />
+                    <div>
+                        <MudText Typo="Typo.body2">Microsoft 365</MudText>
+                    </div>
+                </div>
+            </MudItem>
+            <MudItem xs="6" sm="3">
+                <div class="d-flex align-center">
+                    <MudIcon Icon="@(_data.AzureConnected ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.Cancel)"
+                             Color="@(_data.AzureConnected ? Color.Success : Color.Default)" Class="mr-2" />
+                    <MudText Typo="Typo.body2">Azure</MudText>
+                </div>
+            </MudItem>
+            <MudItem xs="6" sm="3">
+                <div class="d-flex align-center">
+                    <MudIcon Icon="@(_data.AwsConnected ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.Cancel)"
+                             Color="@(_data.AwsConnected ? Color.Success : Color.Default)" Class="mr-2" />
+                    <MudText Typo="Typo.body2">AWS</MudText>
+                </div>
+            </MudItem>
+            <MudItem xs="6" sm="3">
+                <div class="d-flex align-center">
+                    <MudIcon Icon="@(_data.GcpConnected ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.Cancel)"
+                             Color="@(_data.GcpConnected ? Color.Success : Color.Default)" Class="mr-2" />
+                    <MudText Typo="Typo.body2">Google Cloud</MudText>
+                </div>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    <!-- OAuth Apps & Shadow IT -->
+    <MudGrid Class="mb-4">
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-4" Elevation="2" Style="border-radius: 12px;">
+                <MudText Typo="Typo.subtitle1" Style="font-weight: 600;" Class="mb-3">OAuth App Risk Distribution</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-2">Total: @_data.OAuthAppCount apps</MudText>
+                <MudSimpleTable Dense="true" Hover="true">
+                    <thead>
+                        <tr>
+                            <th>Risk Level</th>
+                            <th style="text-align: right;">Apps</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><MudChip Size="Size.Small" Color="Color.Error">High Risk</MudChip></td>
+                            <td style="text-align: right;">@_data.HighRiskOAuthApps</td>
+                        </tr>
+                        <tr>
+                            <td><MudChip Size="Size.Small" Color="Color.Warning">Medium Risk</MudChip></td>
+                            <td style="text-align: right;">@_data.MediumRiskOAuthApps</td>
+                        </tr>
+                        <tr>
+                            <td><MudChip Size="Size.Small" Color="Color.Success">Low Risk</MudChip></td>
+                            <td style="text-align: right;">@_data.LowRiskOAuthApps</td>
+                        </tr>
+                    </tbody>
+                </MudSimpleTable>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-4" Elevation="2" Style="border-radius: 12px;">
+                <div class="d-flex align-center mb-3">
+                    <MudText Typo="Typo.subtitle1" Style="font-weight: 600;">Shadow IT Discovery</MudText>
+                    <MudSpacer />
+                    <MudChip Size="Size.Small" Color="@(_data.CloudDiscoveryEnabled ? Color.Success : Color.Warning)">
+                        @(_data.CloudDiscoveryEnabled ? "Enabled" : "Disabled")
+                    </MudChip>
+                </div>
+                <MudSimpleTable Dense="true" Hover="true">
+                    <tbody>
+                        <tr>
+                            <td>Discovered Apps</td>
+                            <td style="text-align: right;">@_data.DiscoveredAppCount</td>
+                        </tr>
+                        <tr>
+                            <td><MudChip Size="Size.Small" Color="Color.Success" Variant="Variant.Outlined">Sanctioned</MudChip></td>
+                            <td style="text-align: right;">@_data.SanctionedApps</td>
+                        </tr>
+                        <tr>
+                            <td><MudChip Size="Size.Small" Color="Color.Error" Variant="Variant.Outlined">Unsanctioned</MudChip></td>
+                            <td style="text-align: right;">@_data.UnsanctionedApps</td>
+                        </tr>
+                        <tr>
+                            <td><MudChip Size="Size.Small" Color="Color.Info" Variant="Variant.Outlined">Monitored</MudChip></td>
+                            <td style="text-align: right;">@_data.MonitoredApps</td>
+                        </tr>
+                    </tbody>
+                </MudSimpleTable>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    <!-- Policies -->
+    <MudText Typo="Typo.h6" Class="mb-3" Style="color: #51627A;">Policy Configuration</MudText>
+    <MudPaper Class="pa-4 mb-4" Elevation="2" Style="border-radius: 12px;">
+        <MudGrid>
+            <MudItem xs="6" sm="4" md="2">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Total Policies</MudText>
+                <MudText Typo="Typo.h5" Style="font-weight: 600;">@_data.TotalPolicyCount</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Success">@_data.EnabledPolicies enabled</MudText>
+            </MudItem>
+            <MudItem xs="6" sm="4" md="2">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Activity</MudText>
+                <MudText Typo="Typo.h5" Style="font-weight: 600;">@_data.ActivityPolicyCount</MudText>
+            </MudItem>
+            <MudItem xs="6" sm="4" md="2">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Anomaly</MudText>
+                <MudText Typo="Typo.h5" Style="font-weight: 600;">@_data.AnomalyPolicyCount</MudText>
+            </MudItem>
+            <MudItem xs="6" sm="4" md="2">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Session</MudText>
+                <MudText Typo="Typo.h5" Style="font-weight: 600;">@_data.SessionPolicyCount</MudText>
+            </MudItem>
+            <MudItem xs="6" sm="4" md="2">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Access</MudText>
+                <MudText Typo="Typo.h5" Style="font-weight: 600;">@_data.AccessPolicyCount</MudText>
+            </MudItem>
+            <MudItem xs="6" sm="4" md="2">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">File</MudText>
+                <MudText Typo="Typo.h5" Style="font-weight: 600;">@_data.FilePolicyCount</MudText>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    <!-- App Governance & Session Control -->
+    <MudGrid Class="mb-4">
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-4" Elevation="2" Style="border-radius: 12px;">
+                <div class="d-flex align-center mb-3">
+                    <MudIcon Icon="@Icons.Material.Filled.Security" Color="Color.Primary" Class="mr-2" />
+                    <MudText Typo="Typo.subtitle1" Style="font-weight: 600;">App Governance</MudText>
+                    <MudSpacer />
+                    <MudChip Size="Size.Small" Color="@(_data.AppGovernanceEnabled ? Color.Success : Color.Default)">
+                        @(_data.AppGovernanceEnabled ? "Enabled" : "Disabled")
+                    </MudChip>
+                </div>
+                @if (_data.AppGovernanceEnabled)
+                {
+                    <MudSimpleTable Dense="true">
+                        <tbody>
+                            <tr>
+                                <td>Governance Policies</td>
+                                <td style="text-align: right;">@_data.AppGovernancePolicyCount</td>
+                            </tr>
+                            <tr>
+                                <td>Governance Alerts</td>
+                                <td style="text-align: right;">@_data.AppGovernanceAlerts</td>
+                            </tr>
+                        </tbody>
+                    </MudSimpleTable>
+                }
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-4" Elevation="2" Style="border-radius: 12px;">
+                <div class="d-flex align-center mb-3">
+                    <MudIcon Icon="@Icons.Material.Filled.Policy" Color="Color.Primary" Class="mr-2" />
+                    <MudText Typo="Typo.subtitle1" Style="font-weight: 600;">Session Control</MudText>
+                    <MudSpacer />
+                    <MudChip Size="Size.Small" Color="@(_data.SessionControlEnabled ? Color.Success : Color.Default)">
+                        @(_data.SessionControlEnabled ? "Enabled" : "Disabled")
+                    </MudChip>
+                </div>
+                @if (_data.SessionControlEnabled)
+                {
+                    <MudText Typo="Typo.body2">
+                        <strong>@_data.SessionControlledApps</strong> apps under session control
+                    </MudText>
+                }
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    <!-- Alerts -->
+    <MudText Typo="Typo.h6" Class="mb-3" Style="color: #51627A;">Security Alerts</MudText>
+    <MudPaper Class="pa-4 mb-4" Elevation="2" Style="border-radius: 12px;">
+        <MudGrid>
+            <MudItem xs="6" sm="3">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Open Alerts</MudText>
+                <MudText Typo="Typo.h4" Style="font-weight: 600;">@_data.OpenAlerts</MudText>
+            </MudItem>
+            <MudItem xs="6" sm="3">
+                <MudPaper Class="pa-2" Elevation="0" Style="background: #ffebee; border-radius: 8px;">
+                    <MudText Typo="Typo.caption" Color="Color.Error">High Severity</MudText>
+                    <MudText Typo="Typo.h5" Style="font-weight: 600; color: #f44336;">@_data.HighSeverityAlerts</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="6" sm="3">
+                <MudPaper Class="pa-2" Elevation="0" Style="background: #fff3e0; border-radius: 8px;">
+                    <MudText Typo="Typo.caption" Color="Color.Warning">Medium Severity</MudText>
+                    <MudText Typo="Typo.h5" Style="font-weight: 600; color: #ff9800;">@_data.MediumSeverityAlerts</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="6" sm="3">
+                <MudPaper Class="pa-2" Elevation="0" Style="background: #e3f2fd; border-radius: 8px;">
+                    <MudText Typo="Typo.caption" Color="Color.Info">Low Severity</MudText>
+                    <MudText Typo="Typo.h5" Style="font-weight: 600; color: #2196f3;">@_data.LowSeverityAlerts</MudText>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    @if (_data.CollectedAt.HasValue)
+    {
+        <MudText Typo="Typo.caption" Color="Color.Secondary">
+            Last collected: @_data.CollectedAt.Value.ToString("g") UTC
+        </MudText>
+    }
+}
+
+@code {
+    [SupplyParameterFromQuery]
+    public Guid? TenantId { get; set; }
+
+    private bool _isLoading = true;
+    private List<TenantDto> _tenants = new();
+    private Guid? _selectedTenantId;
+    private DefenderForCloudAppsDto? _data;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadTenantsAsync();
+        _selectedTenantId = TenantId ?? _tenants.FirstOrDefault()?.Id;
+
+        if (_selectedTenantId.HasValue)
+            await LoadDataAsync();
+
+        _isLoading = false;
+    }
+
+    private async Task LoadTenantsAsync()
+    {
+        try
+        {
+            _tenants = (await TenantService.GetAllAsync()).ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading tenants: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task LoadDataAsync()
+    {
+        if (!_selectedTenantId.HasValue) return;
+
+        _isLoading = true;
+        try
+        {
+            _data = await InventoryService.GetDefenderForCloudAppsAsync(_selectedTenantId.Value);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading data: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+}

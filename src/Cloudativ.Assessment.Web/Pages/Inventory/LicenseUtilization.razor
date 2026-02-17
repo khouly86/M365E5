@@ -1,0 +1,686 @@
+@page "/inventory/licenses"
+@attribute [Authorize]
+@using Cloudativ.Assessment.Domain.Enums
+@using MudSeverity = MudBlazor.Severity
+@inject IInventoryService InventoryService
+@inject ITenantService TenantService
+@inject ISnackbar Snackbar
+
+<PageTitle>License Utilization - Cloudativ Assessment</PageTitle>
+
+<div class="d-flex justify-space-between align-center mb-4">
+    <div>
+        <MudText Typo="Typo.h5" Style="font-weight: 600; color: #51627A;">License Utilization</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">Multi-license value tracking and optimization insights</MudText>
+    </div>
+    <div class="d-flex gap-2 align-center">
+        <MudSelect T="Guid?" Label="Tenant" Value="_selectedTenantId" Dense="true"
+                   Style="min-width: 200px;" Variant="Variant.Outlined"
+                   ValueChanged="@(async (Guid? v) => { _selectedTenantId = v; await LoadDataAsync(); })">
+            @foreach (var tenant in _tenants)
+            {
+                <MudSelectItem Value="@((Guid?)tenant.Id)">@tenant.Name</MudSelectItem>
+            }
+        </MudSelect>
+        <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Download">Export Report</MudButton>
+    </div>
+</div>
+
+@if (_isLoading)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+}
+else if (_multiLicenseUtilization == null)
+{
+    <MudPaper Class="pa-8 text-center" Elevation="2" Style="border-radius: 12px;">
+        <MudIcon Icon="@Icons.Material.Filled.CreditCard" Size="Size.Large" Color="Color.Primary" Class="mb-4" />
+        <MudText Typo="Typo.h6">No License Data Available</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">
+            Run an inventory collection to analyze license utilization.
+        </MudText>
+    </MudPaper>
+}
+else
+{
+    <!-- License Distribution Overview -->
+    <MudGrid Class="mb-4">
+        <MudItem xs="12" md="3">
+            <MudPaper Class="pa-4" Elevation="2" Style="border-radius: 12px;">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Total Licenses</MudText>
+                <MudText Typo="Typo.h4" Style="font-weight: 600;">@_multiLicenseUtilization.TotalLicenses.ToString("N0")</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Across all categories</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" md="3">
+            <MudPaper Class="pa-4" Elevation="2" Style="border-radius: 12px;">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Assigned Licenses</MudText>
+                <MudText Typo="Typo.h4" Style="font-weight: 600; color: #1976d2;">@_multiLicenseUtilization.TotalAssignedLicenses.ToString("N0")</MudText>
+                <MudProgressLinear Value="@_multiLicenseUtilization.OverallAssignmentPercentage" Color="Color.Primary"
+                                   Size="Size.Small" Rounded="true" Class="mt-2" />
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" md="3">
+            <MudPaper Class="pa-4" Elevation="2" Style="border-radius: 12px;">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Feature Utilization</MudText>
+                <MudText Typo="Typo.h4" Style="@($"font-weight: 600; color: {GetUtilizationColorHex(_multiLicenseUtilization.OverallFeatureUtilization)};")">
+                    @_multiLicenseUtilization.OverallFeatureUtilization.ToString("F0")%
+                </MudText>
+                <MudProgressLinear Value="@_multiLicenseUtilization.OverallFeatureUtilization"
+                                   Color="@GetUtilizationColor(_multiLicenseUtilization.OverallFeatureUtilization)"
+                                   Size="Size.Small" Rounded="true" Class="mt-2" />
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" md="3">
+            <MudPaper Class="pa-4" Elevation="2" Style="border-radius: 12px; background: linear-gradient(135deg, #FFEBEE 0%, #FFCDD2 100%);">
+                <MudText Typo="Typo.caption" Color="Color.Error">Est. Monthly Waste</MudText>
+                <MudText Typo="Typo.h4" Style="font-weight: 600; color: #d32f2f;">
+                    $@_multiLicenseUtilization.TotalEstimatedMonthlyWaste.ToString("N0")
+                </MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Underutilized features</MudText>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    <!-- License Tier Groups -->
+    <MudPaper Class="pa-4 mb-4" Elevation="2" Style="border-radius: 12px;">
+        <MudText Typo="Typo.h6" Style="font-weight: 600;" Class="mb-3">License Distribution by Tier</MudText>
+        <MudGrid>
+            @foreach (var tier in _multiLicenseUtilization.TierGroups)
+            {
+                <MudItem xs="12" md="4" lg="2">
+                    <MudPaper Class="pa-3" Elevation="0" Style="@GetTierCardStyle(tier.TierGroup)">
+                        <div class="d-flex justify-space-between align-center mb-2">
+                            <MudText Typo="Typo.subtitle2" Style="font-weight: 600;">@tier.TierGroup</MudText>
+                            <MudChip Size="Size.Small" Style="@GetTierChipStyle(tier.TierGroup)">
+                                @tier.TotalLicenses.ToString("N0")
+                            </MudChip>
+                        </div>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                            @tier.AssignedLicenses.ToString("N0") assigned
+                        </MudText>
+                        <MudProgressLinear Value="@tier.UtilizationPercentage"
+                                           Color="@GetUtilizationColor(tier.UtilizationPercentage)"
+                                           Size="Size.Small" Rounded="true" Class="mt-2" />
+                    </MudPaper>
+                </MudItem>
+            }
+        </MudGrid>
+    </MudPaper>
+
+    <!-- License Utilization Chart -->
+    @if (_chartData.Any() && _chartData[0].Length > 0)
+    {
+        <MudPaper Class="pa-4 mb-4" Elevation="2" Style="border-radius: 12px;">
+            <MudText Typo="Typo.h6" Style="font-weight: 600;" Class="mb-3">License Utilization Overview</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+                Comparison of total licenses purchased vs licenses assigned to users
+            </MudText>
+            <div style="height: 350px;">
+                <MudChart ChartType="ChartType.Bar"
+                          ChartSeries="@_chartSeries"
+                          XAxisLabels="@_chartLabels"
+                          Width="100%"
+                          Height="320px"
+                          ChartOptions="@_chartOptions" />
+            </div>
+            <div class="d-flex justify-center gap-4 mt-3">
+                <div class="d-flex align-center gap-2">
+                    <div style="width: 16px; height: 16px; background: #1976D2; border-radius: 4px;"></div>
+                    <MudText Typo="Typo.caption">Total Licenses</MudText>
+                </div>
+                <div class="d-flex align-center gap-2">
+                    <div style="width: 16px; height: 16px; background: #4CAF50; border-radius: 4px;"></div>
+                    <MudText Typo="Typo.caption">Assigned (Utilized)</MudText>
+                </div>
+                <div class="d-flex align-center gap-2">
+                    <div style="width: 16px; height: 16px; background: #FF9800; border-radius: 4px;"></div>
+                    <MudText Typo="Typo.caption">Available (Unused)</MudText>
+                </div>
+            </div>
+        </MudPaper>
+    }
+
+    <!-- License Category Selector -->
+    <MudPaper Class="pa-4 mb-4" Elevation="2" Style="border-radius: 12px;">
+        <div class="d-flex justify-space-between align-center mb-4">
+            <MudText Typo="Typo.h6" Style="font-weight: 600;">License Category Details</MudText>
+            <MudSelect T="LicenseCategory?" Label="Select License" Value="_selectedCategory" Dense="true"
+                       Style="min-width: 250px;" Variant="Variant.Outlined"
+                       ValueChanged="@(async (LicenseCategory? v) => { _selectedCategory = v; await LoadCategoryDetailsAsync(); })">
+                <MudSelectItem T="LicenseCategory?" Value="@((LicenseCategory?)null)">Overview (All Categories)</MudSelectItem>
+                @foreach (var category in _licenseSummaries.Where(s => s.TotalLicenses > 0))
+                {
+                    <MudSelectItem T="LicenseCategory?" Value="@((LicenseCategory?)category.Category)">@category.DisplayName (@category.TotalLicenses)</MudSelectItem>
+                }
+            </MudSelect>
+        </div>
+
+        @if (_selectedCategory == null)
+        {
+            <!-- Overview: All License Categories Table -->
+            <MudTable Items="_licenseSummaries.Where(s => s.TotalLicenses > 0)" Dense="true" Hover="true" Striped="true">
+                <HeaderContent>
+                    <MudTh>License Category</MudTh>
+                    <MudTh>Tier</MudTh>
+                    <MudTh>Total</MudTh>
+                    <MudTh>Assigned</MudTh>
+                    <MudTh>Available</MudTh>
+                    <MudTh>Utilization</MudTh>
+                    <MudTh>Est. Waste</MudTh>
+                    <MudTh>Actions</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>
+                        <div class="d-flex align-center">
+                            <MudChip Size="Size.Small" Style="@GetCategoryChipStyle(context.Category)" Class="mr-2">
+                                @context.Category.GetShortName()
+                            </MudChip>
+                            <MudText Typo="Typo.body2" Style="font-weight: 500;">@context.DisplayName</MudText>
+                        </div>
+                    </MudTd>
+                    <MudTd>
+                        <MudChip Size="Size.Small" Variant="Variant.Outlined">@context.Category.GetTierGroup()</MudChip>
+                    </MudTd>
+                    <MudTd>@context.TotalLicenses.ToString("N0")</MudTd>
+                    <MudTd>@context.AssignedLicenses.ToString("N0")</MudTd>
+                    <MudTd Style="color: #4CAF50; font-weight: 500;">@context.AvailableLicenses.ToString("N0")</MudTd>
+                    <MudTd>
+                        <MudProgressLinear Value="@context.UtilizationPercentage"
+                                           Color="@GetUtilizationColor(context.UtilizationPercentage)"
+                                           Size="Size.Small" Rounded="true" Style="width: 80px;" />
+                        <MudText Typo="Typo.caption">@context.UtilizationPercentage.ToString("F0")%</MudText>
+                    </MudTd>
+                    <MudTd>
+                        @if (context.EstimatedWaste > 0)
+                        {
+                            <MudText Typo="Typo.body2" Style="color: #d32f2f; font-weight: 500;">
+                                $@context.EstimatedWaste.ToString("N0")
+                            </MudText>
+                        }
+                        else
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">-</MudText>
+                        }
+                    </MudTd>
+                    <MudTd>
+                        <MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="Size.Small"
+                                       OnClick="@(() => { _selectedCategory = context.Category; LoadCategoryDetailsAsync(); })" />
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+        else if (_categoryUtilization != null)
+        {
+            <!-- Specific Category Details -->
+            <MudGrid>
+                <MudItem xs="12" md="4">
+                    <MudPaper Class="pa-4" Elevation="0" Style="background: #f5f5f5; border-radius: 8px;">
+                        <div class="text-center mb-3">
+                            <MudProgressCircular Value="@_categoryUtilization.OverallFeatureUtilization"
+                                                  Color="@GetUtilizationColor(_categoryUtilization.OverallFeatureUtilization)"
+                                                  Size="Size.Large" StrokeWidth="8"
+                                                  Style="width: 120px; height: 120px;">
+                                <MudText Typo="Typo.h5" Style="font-weight: 600;">
+                                    @_categoryUtilization.OverallFeatureUtilization.ToString("F0")%
+                                </MudText>
+                            </MudProgressCircular>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-2">
+                                Feature Utilization
+                            </MudText>
+                        </div>
+                        <MudDivider Class="my-3" />
+                        <div class="d-flex justify-space-between mb-2">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">Total Users</MudText>
+                            <MudText Typo="Typo.body2" Style="font-weight: 500;">@_categoryUtilization.TotalUsers.ToString("N0")</MudText>
+                        </div>
+                        <div class="d-flex justify-space-between mb-2">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">Using MFA</MudText>
+                            <MudText Typo="Typo.body2" Style="font-weight: 500;">@_categoryUtilization.UsersUsingMfa.ToString("N0")</MudText>
+                        </div>
+                        <div class="d-flex justify-space-between mb-2">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">Using CA</MudText>
+                            <MudText Typo="Typo.body2" Style="font-weight: 500;">@_categoryUtilization.UsersUsingCa.ToString("N0")</MudText>
+                        </div>
+                        <div class="d-flex justify-space-between">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">Using Defender</MudText>
+                            <MudText Typo="Typo.body2" Style="font-weight: 500;">@_categoryUtilization.UsersUsingDefender.ToString("N0")</MudText>
+                        </div>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="12" md="8">
+                    <MudText Typo="Typo.subtitle2" Class="mb-3">Feature Utilization Matrix</MudText>
+                    <MudTable Items="_categoryUtilization.FeatureBreakdown" Dense="true" Hover="true">
+                        <HeaderContent>
+                            <MudTh>Feature</MudTh>
+                            <MudTh>Included</MudTh>
+                            <MudTh>Eligible</MudTh>
+                            <MudTh>Using</MudTh>
+                            <MudTh>Utilization</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd>
+                                <MudText Typo="Typo.body2" Style="font-weight: 500;">@context.FeatureName</MudText>
+                            </MudTd>
+                            <MudTd>
+                                @if (context.IsIncludedInLicense)
+                                {
+                                    <MudIcon Icon="@Icons.Material.Filled.Check" Color="Color.Success" Size="Size.Small" />
+                                }
+                                else
+                                {
+                                    <MudIcon Icon="@Icons.Material.Filled.Remove" Color="Color.Default" Size="Size.Small" />
+                                }
+                            </MudTd>
+                            <MudTd>@context.UsersEligible.ToString("N0")</MudTd>
+                            <MudTd>@context.UsersUsing.ToString("N0")</MudTd>
+                            <MudTd>
+                                <div class="d-flex align-center gap-2">
+                                    <MudProgressLinear Value="@context.UtilizationPercentage"
+                                                       Color="@GetUtilizationColor(context.UtilizationPercentage)"
+                                                       Size="Size.Small" Rounded="true" Style="width: 60px;" />
+                                    <MudText Typo="Typo.caption">@context.UtilizationPercentage.ToString("F0")%</MudText>
+                                </div>
+                            </MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                </MudItem>
+            </MudGrid>
+        }
+    </MudPaper>
+
+    <!-- Value Leakage Analysis -->
+    <MudPaper Class="pa-4 mb-4" Elevation="2" Style="border-radius: 12px;">
+        <MudText Typo="Typo.h6" Style="font-weight: 600;" Class="mb-3">Value Leakage Analysis</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+            Users not utilizing key security features included in their licenses
+        </MudText>
+
+        <MudGrid>
+            <MudItem xs="12" md="4">
+                <MudPaper Class="pa-4" Elevation="0" Style="background: #FFF3E0; border-radius: 8px;">
+                    <div class="d-flex align-center justify-space-between mb-2">
+                        <MudIcon Icon="@Icons.Material.Filled.Security" Color="Color.Warning" />
+                        <MudChip Size="Size.Small" Color="Color.Error">High Priority</MudChip>
+                    </div>
+                    <MudText Typo="Typo.h4" Style="font-weight: 600; color: #f57c00;">
+                        @_multiLicenseUtilization.TotalUsersWithoutMfa.ToString("N0")
+                    </MudText>
+                    <MudText Typo="Typo.subtitle2">Licensed Users Without MFA</MudText>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                        Security features not protected
+                    </MudText>
+                    <MudButton Variant="Variant.Text" Color="Color.Warning" Size="Size.Small"
+                               EndIcon="@Icons.Material.Filled.ArrowForward" Class="mt-2"
+                               OnClick="@(() => ViewAffectedUsers("NoMfa"))">
+                        View Users
+                    </MudButton>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudPaper Class="pa-4" Elevation="0" Style="background: #E3F2FD; border-radius: 8px;">
+                    <div class="d-flex align-center justify-space-between mb-2">
+                        <MudIcon Icon="@Icons.Material.Filled.Policy" Color="Color.Info" />
+                        <MudChip Size="Size.Small" Color="Color.Warning">Medium</MudChip>
+                    </div>
+                    <MudText Typo="Typo.h4" Style="font-weight: 600; color: #1976d2;">
+                        @_multiLicenseUtilization.TotalUsersWithoutCa.ToString("N0")
+                    </MudText>
+                    <MudText Typo="Typo.subtitle2">No Conditional Access</MudText>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                        Zero Trust features unused
+                    </MudText>
+                    <MudButton Variant="Variant.Text" Color="Color.Info" Size="Size.Small"
+                               EndIcon="@Icons.Material.Filled.ArrowForward" Class="mt-2"
+                               OnClick="@(() => ViewAffectedUsers("NoCa"))">
+                        View Users
+                    </MudButton>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudPaper Class="pa-4" Elevation="0" Style="background: #E8F5E9; border-radius: 8px;">
+                    <div class="d-flex align-center justify-space-between mb-2">
+                        <MudIcon Icon="@Icons.Material.Filled.Shield" Color="Color.Success" />
+                        <MudChip Size="Size.Small" Color="Color.Info">Opportunity</MudChip>
+                    </div>
+                    <MudText Typo="Typo.h4" Style="font-weight: 600; color: #388e3c;">
+                        @_multiLicenseUtilization.TotalUsersWithoutDefender.ToString("N0")
+                    </MudText>
+                    <MudText Typo="Typo.subtitle2">Defender Not Onboarded</MudText>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                        Endpoint protection value not realized
+                    </MudText>
+                    <MudButton Variant="Variant.Text" Color="Color.Success" Size="Size.Small"
+                               EndIcon="@Icons.Material.Filled.ArrowForward" Class="mt-2"
+                               OnClick="@(() => ViewAffectedUsers("NoDefender"))">
+                        View Users
+                    </MudButton>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    <!-- All License Subscriptions -->
+    <MudPaper Class="pa-4" Elevation="2" Style="border-radius: 12px;">
+        <MudText Typo="Typo.h6" Style="font-weight: 600;" Class="mb-3">All License Subscriptions</MudText>
+        <MudTable Items="_subscriptions" Dense="true" Hover="true" Striped="true">
+            <HeaderContent>
+                <MudTh>License</MudTh>
+                <MudTh>Category</MudTh>
+                <MudTh>Status</MudTh>
+                <MudTh>Total</MudTh>
+                <MudTh>Assigned</MudTh>
+                <MudTh>Available</MudTh>
+                <MudTh>$/User</MudTh>
+                <MudTh>Utilization</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>
+                    <div>
+                        <MudText Typo="Typo.body2" Style="font-weight: 500;">@context.DisplayName</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">@context.SkuPartNumber</MudText>
+                    </div>
+                </MudTd>
+                <MudTd>
+                    @if (context.LicenseCategory != LicenseCategory.Unknown)
+                    {
+                        <MudChip Size="Size.Small" Style="@GetCategoryChipStyle(context.LicenseCategory)">
+                            @context.LicenseCategory.GetShortName()
+                        </MudChip>
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Uncategorized</MudText>
+                    }
+                </MudTd>
+                <MudTd>
+                    <MudChip Size="Size.Small" Color="@GetCapabilityColor(context.CapabilityStatus)" Variant="Variant.Filled">
+                        @context.CapabilityStatus
+                    </MudChip>
+                    @if (context.IsTrial)
+                    {
+                        <MudChip Size="Size.Small" Color="Color.Warning" Variant="Variant.Outlined" Class="ml-1">Trial</MudChip>
+                    }
+                </MudTd>
+                <MudTd>@context.PrepaidUnits.ToString("N0")</MudTd>
+                <MudTd>@context.ConsumedUnits.ToString("N0")</MudTd>
+                <MudTd Style="color: #4CAF50; font-weight: 500;">@context.AvailableUnits.ToString("N0")</MudTd>
+                <MudTd>
+                    @if (context.EstimatedMonthlyPricePerUser > 0)
+                    {
+                        <MudText Typo="Typo.body2">$@context.EstimatedMonthlyPricePerUser.ToString("F2")</MudText>
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">-</MudText>
+                    }
+                </MudTd>
+                <MudTd>
+                    @{
+                        var utilization = context.PrepaidUnits > 0 ? (double)context.ConsumedUnits / context.PrepaidUnits * 100 : 0;
+                    }
+                    <MudProgressLinear Value="@utilization" Color="@GetUtilizationColor(utilization)"
+                                       Size="Size.Small" Rounded="true" Style="width: 80px;" />
+                    <MudText Typo="Typo.caption">@utilization.ToString("F0")%</MudText>
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText Typo="Typo.body1" Class="pa-4 text-center">No license subscriptions found.</MudText>
+            </NoRecordsContent>
+        </MudTable>
+    </MudPaper>
+}
+
+<!-- Affected Users Dialog -->
+<MudDialog @bind-Visible="_showUsersDialog" Options="_dialogOptions">
+    <TitleContent>
+        <MudText Typo="Typo.h6">Affected Users - @_dialogTitle</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudList T="string" Dense="true">
+            @foreach (var user in _affectedUsers.Take(100))
+            {
+                <MudListItem Icon="@Icons.Material.Filled.Person">@user</MudListItem>
+            }
+            @if (_affectedUsers.Count > 100)
+            {
+                <MudListItem>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                        ... and @(_affectedUsers.Count - 100) more users
+                    </MudText>
+                </MudListItem>
+            }
+        </MudList>
+    </DialogContent>
+    <DialogActions>
+        <MudButton Color="Color.Primary" OnClick="@(() => _showUsersDialog = false)">Close</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [SupplyParameterFromQuery]
+    public Guid? TenantId { get; set; }
+
+    private bool _isLoading = true;
+    private List<TenantDto> _tenants = new();
+    private Guid? _selectedTenantId;
+    private MultiLicenseUtilizationDto? _multiLicenseUtilization;
+    private List<LicenseSummaryDto> _licenseSummaries = new();
+    private List<LicenseSubscriptionDto> _subscriptions = new();
+    private LicenseCategory? _selectedCategory;
+    private LicenseUtilizationByTypeDto? _categoryUtilization;
+    private List<string> _affectedUsers = new();
+    private bool _showUsersDialog = false;
+    private string _dialogTitle = "";
+    private DialogOptions _dialogOptions = new() { MaxWidth = MaxWidth.Medium, FullWidth = true };
+
+    // Chart data
+    private List<ChartSeries> _chartSeries = new();
+    private string[] _chartLabels = Array.Empty<string>();
+    private double[][] _chartData = Array.Empty<double[]>();
+    private ChartOptions _chartOptions = new()
+    {
+        YAxisTicks = 10,
+        MaxNumYAxisTicks = 10
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadTenantsAsync();
+        _selectedTenantId = TenantId ?? _tenants.FirstOrDefault()?.Id;
+
+        if (_selectedTenantId.HasValue)
+            await LoadDataAsync();
+
+        _isLoading = false;
+    }
+
+    private async Task LoadTenantsAsync()
+    {
+        try
+        {
+            _tenants = (await TenantService.GetAllAsync()).ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading tenants: {ex.Message}", MudSeverity.Error);
+        }
+    }
+
+    private async Task LoadDataAsync()
+    {
+        if (!_selectedTenantId.HasValue) return;
+
+        _isLoading = true;
+        try
+        {
+            _multiLicenseUtilization = await InventoryService.GetMultiLicenseUtilizationAsync(_selectedTenantId.Value);
+            _licenseSummaries = (await InventoryService.GetLicenseSummariesByCategoryAsync(_selectedTenantId.Value)).ToList();
+            _subscriptions = (await InventoryService.GetLicenseSubscriptionsAsync(_selectedTenantId.Value)).ToList();
+            _selectedCategory = null;
+            _categoryUtilization = null;
+
+            // Prepare chart data
+            PrepareChartData();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading data: {ex.Message}", MudSeverity.Error);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private void PrepareChartData()
+    {
+        // Filter to show only subscriptions with licenses (and limit to top 10 for readability)
+        var chartSubscriptions = _subscriptions
+            .Where(s => s.PrepaidUnits > 0)
+            .OrderByDescending(s => s.PrepaidUnits)
+            .Take(10)
+            .ToList();
+
+        if (!chartSubscriptions.Any())
+        {
+            _chartLabels = Array.Empty<string>();
+            _chartSeries = new List<ChartSeries>();
+            _chartData = new[] { Array.Empty<double>() };
+            return;
+        }
+
+        // Prepare labels (license names, truncated for readability)
+        _chartLabels = chartSubscriptions
+            .Select(s => TruncateLabel(s.DisplayName ?? s.SkuPartNumber, 20))
+            .ToArray();
+
+        // Prepare series data
+        var totalData = chartSubscriptions.Select(s => (double)s.PrepaidUnits).ToArray();
+        var assignedData = chartSubscriptions.Select(s => (double)s.ConsumedUnits).ToArray();
+        var availableData = chartSubscriptions.Select(s => (double)s.AvailableUnits).ToArray();
+
+        _chartData = new[] { totalData, assignedData, availableData };
+
+        _chartSeries = new List<ChartSeries>
+        {
+            new ChartSeries { Name = "Total Licenses", Data = totalData },
+            new ChartSeries { Name = "Assigned", Data = assignedData },
+            new ChartSeries { Name = "Available", Data = availableData }
+        };
+    }
+
+    private static string TruncateLabel(string label, int maxLength)
+    {
+        if (string.IsNullOrEmpty(label)) return "";
+        return label.Length <= maxLength ? label : label.Substring(0, maxLength - 3) + "...";
+    }
+
+    private async Task LoadCategoryDetailsAsync()
+    {
+        if (!_selectedTenantId.HasValue || !_selectedCategory.HasValue)
+        {
+            _categoryUtilization = null;
+            return;
+        }
+
+        try
+        {
+            _categoryUtilization = await InventoryService.GetLicenseUtilizationByCategoryAsync(
+                _selectedTenantId.Value, _selectedCategory.Value);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading category details: {ex.Message}", MudSeverity.Error);
+        }
+    }
+
+    private void ViewAffectedUsers(string category)
+    {
+        _dialogTitle = category switch
+        {
+            "NoMfa" => "Licensed Users Without MFA",
+            "NoCa" => "Licensed Users Without Conditional Access",
+            "NoDefender" => "Licensed Users Without Defender",
+            _ => "Affected Users"
+        };
+
+        // In a real implementation, this would fetch the actual user list
+        _affectedUsers = new List<string> { "User data would be loaded here" };
+        _showUsersDialog = true;
+    }
+
+    private Color GetUtilizationColor(double percentage) => percentage switch
+    {
+        >= 80 => Color.Success,
+        >= 50 => Color.Warning,
+        _ => Color.Error
+    };
+
+    private string GetUtilizationColorHex(double percentage) => percentage switch
+    {
+        >= 80 => "#4CAF50",
+        >= 50 => "#ff9800",
+        _ => "#f44336"
+    };
+
+    private Color GetCapabilityColor(string? status) => status?.ToLower() switch
+    {
+        "enabled" => Color.Success,
+        "suspended" => Color.Error,
+        "warning" => Color.Warning,
+        _ => Color.Default
+    };
+
+    private string GetTierCardStyle(string tierGroup) => tierGroup switch
+    {
+        "Enterprise" => "background: #F3E5F5; border-radius: 8px; border-left: 3px solid #9C27B0;",
+        "Business" => "background: #E3F2FD; border-radius: 8px; border-left: 3px solid #1976D2;",
+        "Frontline" => "background: #E0F2F1; border-radius: 8px; border-left: 3px solid #00796B;",
+        "Education" => "background: #E8F5E9; border-radius: 8px; border-left: 3px solid #388E3C;",
+        "Government" => "background: #FFEBEE; border-radius: 8px; border-left: 3px solid #D32F2F;",
+        _ => "background: #f5f5f5; border-radius: 8px; border-left: 3px solid #757575;"
+    };
+
+    private string GetTierChipStyle(string tierGroup) => tierGroup switch
+    {
+        "Enterprise" => "background: #9C27B0; color: white;",
+        "Business" => "background: #1976D2; color: white;",
+        "Frontline" => "background: #00796B; color: white;",
+        "Education" => "background: #388E3C; color: white;",
+        "Government" => "background: #D32F2F; color: white;",
+        _ => "background: #757575; color: white;"
+    };
+
+    private string GetCategoryChipStyle(LicenseCategory category)
+    {
+        return category switch
+        {
+            // Enterprise - Purple shades
+            LicenseCategory.EnterpriseE5 => "background: #7B1FA2; color: white;",
+            LicenseCategory.EnterpriseE3 => "background: #9C27B0; color: white;",
+            LicenseCategory.EnterpriseE1 => "background: #BA68C8; color: white;",
+
+            // Business - Blue shades
+            LicenseCategory.BusinessPremium => "background: #1565C0; color: white;",
+            LicenseCategory.BusinessStandard => "background: #1976D2; color: white;",
+            LicenseCategory.BusinessBasic => "background: #42A5F5; color: white;",
+
+            // Frontline - Teal shades
+            LicenseCategory.FrontlineF3 => "background: #00796B; color: white;",
+            LicenseCategory.FrontlineF1 => "background: #26A69A; color: white;",
+
+            // Education - Green shades
+            LicenseCategory.EducationA5 => "background: #2E7D32; color: white;",
+            LicenseCategory.EducationA3 => "background: #388E3C; color: white;",
+            LicenseCategory.EducationA1 => "background: #66BB6A; color: white;",
+
+            // Government - Red shades
+            LicenseCategory.GovernmentG5 => "background: #C62828; color: white;",
+            LicenseCategory.GovernmentG3 => "background: #D32F2F; color: white;",
+            LicenseCategory.GovernmentG1 => "background: #EF5350; color: white;",
+
+            // Default
+            _ => "background: #E0FC8E; color: #51627A;"
+        };
+    }
+}

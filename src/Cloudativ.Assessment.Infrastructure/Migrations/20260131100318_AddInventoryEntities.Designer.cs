@@ -3,6 +3,7 @@ using System;
 using Cloudativ.Assessment.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -10,9 +11,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Cloudativ.Assessment.Infrastructure.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260131100318_AddInventoryEntities")]
+    partial class AddInventoryEntities
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "8.0.23");
@@ -2746,196 +2749,6 @@ namespace Cloudativ.Assessment.Infrastructure.Migrations
                     b.ToTable("InventorySnapshots");
                 });
 
-            modelBuilder.Entity("Cloudativ.Assessment.Domain.Entities.Inventory.LicenseCategoryUtilization", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("ActiveUsersWithLicense")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("AssignedLicenses")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("AvailableLicenses")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("CategoryDisplayName")
-                        .IsRequired()
-                        .HasMaxLength(128)
-                        .HasColumnType("TEXT");
-
-                    b.Property<double>("ComplianceFeatureUtilization")
-                        .HasColumnType("REAL");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("CriticalRecommendations")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("DisabledUsersWithLicense")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<decimal>("EstimatedAnnualWaste")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("TEXT");
-
-                    b.Property<decimal>("EstimatedMonthlyPricePerUser")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("TEXT");
-
-                    b.Property<decimal>("EstimatedMonthlyWaste")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("FeatureUtilizationBreakdownJson")
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("HighRecommendations")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<double>("IdentityFeatureUtilization")
-                        .HasColumnType("REAL");
-
-                    b.Property<string>("IncludedFeaturesJson")
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("LicenseCategory")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("MediumRecommendations")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<double>("OverallFeatureUtilization")
-                        .HasColumnType("REAL");
-
-                    b.Property<decimal>("PotentialSavingsIfDowngraded")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("TEXT");
-
-                    b.Property<double>("ProductivityFeatureUtilization")
-                        .HasColumnType("REAL");
-
-                    b.Property<string>("RecommendationsJson")
-                        .HasColumnType("TEXT");
-
-                    b.Property<double>("SecurityFeatureUtilization")
-                        .HasColumnType("REAL");
-
-                    b.Property<Guid>("SnapshotId")
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("SuspendedLicenses")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("TierGroup")
-                        .HasMaxLength(64)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("TopUsersNotUsingSecurityJson")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("TopUsersWithoutCaJson")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("TopUsersWithoutMfaJson")
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("TotalLicenses")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<decimal>("TotalMonthlyLicenseCost")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("TotalUsersWithLicense")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("UnusedFeaturesJson")
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("UsedFeaturesJson")
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("UsersEligibleForDowngrade")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("UsersEligibleForDowngradeJson")
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("UsersWithAudioConferencing")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("UsersWithConditionalAccess")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("UsersWithDefenderForCloudApps")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("UsersWithDefenderForEndpoint")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("UsersWithDefenderForIdentity")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("UsersWithDefenderForOffice")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("UsersWithDlp")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("UsersWithEDiscovery")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("UsersWithIdentityProtection")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("UsersWithInsiderRisk")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("UsersWithMfaEnabled")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("UsersWithPimCoverage")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("UsersWithPowerBI")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("UsersWithPurviewLabels")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("UsersWithRetention")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("UsersWithTeamsPhoneSystem")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("UsersWithoutCa")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("UsersWithoutMfa")
-                        .HasColumnType("INTEGER");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("SnapshotId", "LicenseCategory");
-
-                    b.HasIndex("TenantId", "LicenseCategory");
-
-                    b.HasIndex("TenantId", "SnapshotId");
-
-                    b.ToTable("LicenseCategoryUtilizations");
-                });
-
             modelBuilder.Entity("Cloudativ.Assessment.Domain.Entities.Inventory.LicenseSubscription", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2963,23 +2776,10 @@ namespace Cloudativ.Assessment.Infrastructure.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("TEXT");
 
-                    b.Property<decimal>("EstimatedMonthlyPricePerUser")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("TEXT");
-
                     b.Property<DateTime?>("ExpirationDate")
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("IncludedFeaturesJson")
-                        .HasColumnType("TEXT");
-
-                    b.Property<bool>("IsPrimaryLicense")
-                        .HasColumnType("INTEGER");
-
                     b.Property<bool>("IsTrial")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("LicenseCategory")
                         .HasColumnType("INTEGER");
 
                     b.Property<int>("PrepaidUnits")
@@ -3007,10 +2807,6 @@ namespace Cloudativ.Assessment.Infrastructure.Migrations
                     b.Property<Guid>("TenantId")
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("TierGroup")
-                        .HasMaxLength(64)
-                        .HasColumnType("TEXT");
-
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("TEXT");
 
@@ -3023,8 +2819,6 @@ namespace Cloudativ.Assessment.Infrastructure.Migrations
 
                     b.HasIndex("SnapshotId");
 
-                    b.HasIndex("TenantId", "LicenseCategory");
-
                     b.HasIndex("TenantId", "SnapshotId");
 
                     b.ToTable("LicenseSubscriptions");
@@ -3036,23 +2830,11 @@ namespace Cloudativ.Assessment.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT");
 
-                    b.Property<int>("AddOnLicensesAssigned")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("AddOnLicensesTotal")
-                        .HasColumnType("INTEGER");
-
                     b.Property<int>("AdminsWithoutPim")
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("AllLicenseSummaryJson")
                         .HasColumnType("TEXT");
-
-                    b.Property<int>("BusinessLicensesAssigned")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("BusinessLicensesTotal")
-                        .HasColumnType("INTEGER");
 
                     b.Property<double>("ComplianceFeatureUtilization")
                         .HasColumnType("REAL");
@@ -3101,18 +2883,6 @@ namespace Cloudativ.Assessment.Infrastructure.Migrations
                     b.Property<double>("E5UtilizationPercentage")
                         .HasColumnType("REAL");
 
-                    b.Property<int>("EducationLicensesAssigned")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("EducationLicensesTotal")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("EnterpriseLicensesAssigned")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("EnterpriseLicensesTotal")
-                        .HasColumnType("INTEGER");
-
                     b.Property<decimal>("EstimatedAnnualWaste")
                         .HasPrecision(18, 2)
                         .HasColumnType("TEXT");
@@ -3127,26 +2897,11 @@ namespace Cloudativ.Assessment.Infrastructure.Migrations
                     b.Property<int>("F3LicensesTotal")
                         .HasColumnType("INTEGER");
 
-                    b.Property<int>("FrontlineLicensesAssigned")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("FrontlineLicensesTotal")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("GovernmentLicensesAssigned")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("GovernmentLicensesTotal")
-                        .HasColumnType("INTEGER");
-
                     b.Property<int>("HighRecommendations")
                         .HasColumnType("INTEGER");
 
                     b.Property<double>("IdentityFeatureUtilization")
                         .HasColumnType("REAL");
-
-                    b.Property<string>("LicenseSummaryByCategoryJson")
-                        .HasColumnType("TEXT");
 
                     b.Property<int>("MediumRecommendations")
                         .HasColumnType("INTEGER");
@@ -3169,9 +2924,6 @@ namespace Cloudativ.Assessment.Infrastructure.Migrations
                     b.Property<double>("OverallFeatureUtilization")
                         .HasColumnType("REAL");
 
-                    b.Property<double>("OverallUtilizationPercentage")
-                        .HasColumnType("REAL");
-
                     b.Property<decimal>("PotentialSavingsIfDowngraded")
                         .HasPrecision(18, 2)
                         .HasColumnType("TEXT");
@@ -3187,47 +2939,6 @@ namespace Cloudativ.Assessment.Infrastructure.Migrations
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("TEXT");
-
-                    b.Property<string>("TopWasteByCategoryJson")
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("TotalAssignedLicenses")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("TotalAvailableLicenses")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<decimal>("TotalEstimatedAnnualWaste")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("TEXT");
-
-                    b.Property<decimal>("TotalEstimatedMonthlyWaste")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("TotalLicenseCategories")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("TotalLicenses")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("TotalPrimaryLicenseUsers")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("TotalSuspendedLicenses")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("TotalUnlicensedUsers")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("TotalUsersWithoutCa")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("TotalUsersWithoutDefender")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("TotalUsersWithoutMfa")
-                        .HasColumnType("INTEGER");
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("TEXT");
@@ -4721,9 +4432,6 @@ namespace Cloudativ.Assessment.Infrastructure.Migrations
                     b.Property<bool>("AccountEnabled")
                         .HasColumnType("INTEGER");
 
-                    b.Property<string>("AllLicenseCategoriesJson")
-                        .HasColumnType("TEXT");
-
                     b.Property<string>("AssignedLicensesJson")
                         .HasColumnType("TEXT");
 
@@ -4758,28 +4466,10 @@ namespace Cloudativ.Assessment.Infrastructure.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("TEXT");
 
-                    b.Property<bool>("HasBusinessBasic")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<bool>("HasBusinessPremium")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<bool>("HasBusinessStandard")
-                        .HasColumnType("INTEGER");
-
                     b.Property<bool>("HasE3License")
                         .HasColumnType("INTEGER");
 
                     b.Property<bool>("HasE5License")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<bool>("HasEducationLicense")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<bool>("HasFrontlineLicense")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<bool>("HasGovernmentLicense")
                         .HasColumnType("INTEGER");
 
                     b.Property<bool?>("HasPerUserMfa")
@@ -4860,13 +4550,6 @@ namespace Cloudativ.Assessment.Infrastructure.Migrations
                     b.Property<bool>("OnPremisesSyncEnabled")
                         .HasColumnType("INTEGER");
 
-                    b.Property<int>("PrimaryLicenseCategory")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("PrimaryLicenseTierGroup")
-                        .HasMaxLength(64)
-                        .HasColumnType("TEXT");
-
                     b.Property<string>("RiskDetail")
                         .HasColumnType("TEXT");
 
@@ -4915,8 +4598,6 @@ namespace Cloudativ.Assessment.Infrastructure.Migrations
                     b.HasIndex("TenantId", "HasE5License");
 
                     b.HasIndex("TenantId", "IsPrivileged");
-
-                    b.HasIndex("TenantId", "PrimaryLicenseCategory");
 
                     b.HasIndex("TenantId", "RiskLevel");
 
@@ -5634,25 +5315,6 @@ namespace Cloudativ.Assessment.Infrastructure.Migrations
                         .HasForeignKey("TenantId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-
-                    b.Navigation("Tenant");
-                });
-
-            modelBuilder.Entity("Cloudativ.Assessment.Domain.Entities.Inventory.LicenseCategoryUtilization", b =>
-                {
-                    b.HasOne("Cloudativ.Assessment.Domain.Entities.Inventory.InventorySnapshot", "Snapshot")
-                        .WithMany()
-                        .HasForeignKey("SnapshotId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("Cloudativ.Assessment.Domain.Entities.Tenant", "Tenant")
-                        .WithMany()
-                        .HasForeignKey("TenantId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Snapshot");
 
                     b.Navigation("Tenant");
                 });

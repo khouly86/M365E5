@@ -6,6 +6,7 @@
 @inject AuthenticationStateService AuthService
 @inject NavigationManager NavigationManager
 @inject ISnackbar Snackbar
+@inject IAzureAdSetupService AzureAdSetupService
 @using AssessmentDomainEnum = Cloudativ.Assessment.Domain.Enums.AssessmentDomain
 @using Cloudativ.Assessment.Web.Services
 @using static Cloudativ.Assessment.Domain.Enums.ComplianceStandardExtensions
@@ -88,7 +89,7 @@
                 <MudCard Elevation="@(_model.AuthenticationType == AuthType.AppRegistration ? 4 : 1)"
                          Class="@($"login-option-card {(_model.AuthenticationType == AuthType.AppRegistration ? "selected" : "")}")"
                          Style="@($"cursor: pointer; border: 2px solid {(_model.AuthenticationType == AuthType.AppRegistration ? "var(--mud-palette-primary)" : "transparent")}; transition: all 0.2s ease;")"
-                         @onclick="@(() => _model.AuthenticationType = AuthType.AppRegistration)">
+                         @onclick="@(() => { if (!_appCreatedSuccessfully) { _model.AuthenticationType = AuthType.AppRegistration; _setupResult = null; _testResult = null; } })">
                     <MudCardContent Class="d-flex flex-column align-center pa-4">
                         <MudAvatar Color="@(_model.AuthenticationType == AuthType.AppRegistration ? Color.Primary : Color.Default)"
                                    Size="Size.Large" Class="mb-3">
@@ -114,7 +115,7 @@
                 <MudCard Elevation="@(_model.AuthenticationType == AuthType.PortalAdmin ? 4 : 1)"
                          Class="@($"login-option-card {(_model.AuthenticationType == AuthType.PortalAdmin ? "selected" : "")}")"
                          Style="@($"cursor: pointer; border: 2px solid {(_model.AuthenticationType == AuthType.PortalAdmin ? "var(--mud-palette-primary)" : "transparent")}; transition: all 0.2s ease;")"
-                         @onclick="@(() => _model.AuthenticationType = AuthType.PortalAdmin)">
+                         @onclick="@(() => { if (!_appCreatedSuccessfully) { _model.AuthenticationType = AuthType.PortalAdmin; _testResult = null; } })">
                     <MudCardContent Class="d-flex flex-column align-center pa-4">
                         <MudAvatar Color="@(_model.AuthenticationType == AuthType.PortalAdmin ? Color.Primary : Color.Default)"
                                    Size="Size.Large" Class="mb-3">
@@ -219,9 +220,10 @@
         }
         else
         {
-            <MudAlert Severity="Severity.Info" Class="mb-4" Dense="true" Icon="@Icons.Material.Filled.Info">
+            <MudAlert Severity="Severity.Info" Class="mb-4" Dense="true" Icon="@Icons.Material.Filled.AutoFixHigh">
                 <MudText Typo="Typo.body2">
-                    You will be redirected to Microsoft to sign in. Ensure you have Global Administrator privileges.
+                    Click <strong>"Set Up Azure AD App"</strong> to automatically create an App Registration with all required permissions.
+                    You will sign in with a <strong>Global Administrator</strong> account to authorize the setup.
                 </MudText>
             </MudAlert>
 
@@ -235,29 +237,143 @@
                                   HelperText="Found in Azure Portal > Azure Active Directory > Overview > Tenant ID"
                                   Placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
                                   Adornment="Adornment.Start"
-                                  AdornmentIcon="@Icons.Material.Filled.Business" />
+                                  AdornmentIcon="@Icons.Material.Filled.Business"
+                                  Disabled="@_appCreatedSuccessfully" />
                 </MudItem>
             </MudGrid>
 
-            @* Login with Admin Button *@
-            <div class="d-flex justify-center my-4">
-                <MudButton Variant="Variant.Filled"
-                           Color="Color.Primary"
-                           StartIcon="@Icons.Material.Filled.Login"
-                           OnClick="LoginWithPortalAdmin"
-                           Disabled="@_isTesting"
-                           Size="Size.Large"
-                           Style="min-width: 200px;">
-                    @if (_isTesting)
+            @* Setup Progress *@
+            @if (_isSettingUp && _setupProgress != null)
+            {
+                <MudAlert Severity="Severity.Info" Class="my-4" Icon="@Icons.Material.Filled.Settings">
+                    <div class="d-flex align-center">
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-3" />
+                        <div>
+                            <MudText Typo="Typo.subtitle2">@_setupProgress.CurrentStep</MudText>
+                            <MudText Typo="Typo.caption">Step @_setupProgress.StepNumber of @_setupProgress.TotalSteps</MudText>
+                        </div>
+                    </div>
+                </MudAlert>
+            }
+
+            @* Setup Success Result *@
+            @if (_appCreatedSuccessfully && _setupResult != null)
+            {
+                <MudAlert Severity="Severity.Success" Class="my-4" Icon="@Icons.Material.Filled.CheckCircle">
+                    <MudText Typo="Typo.subtitle1" Style="font-weight: 600;">App Registration Created Successfully!</MudText>
+                    <MudText Typo="Typo.body2">App: <strong>@_setupResult.AppDisplayName</strong></MudText>
+                    @if (!string.IsNullOrEmpty(_setupResult.OrganizationName))
                     {
-                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
-                        <span>Signing in...</span>
+                        <MudText Typo="Typo.body2">Organization: <strong>@_setupResult.OrganizationName</strong></MudText>
                     }
-                    else
+                    <MudText Typo="Typo.body2">
+                        Permissions: <strong>@_setupResult.PermissionsGranted</strong> granted
+                        @if (_setupResult.FailedPermissions.Any())
+                        {
+                            <span style="color: var(--mud-palette-warning);"> (@_setupResult.FailedPermissions.Count failed)</span>
+                        }
+                    </MudText>
+                    @if (_setupResult.SecretExpiry.HasValue)
                     {
-                        <span>Sign in with Microsoft</span>
+                        <MudText Typo="Typo.caption" Style="color: var(--mud-palette-text-secondary);">
+                            Secret expires: @_setupResult.SecretExpiry.Value.ToString("yyyy-MM-dd")
+                        </MudText>
                     }
-                </MudButton>
+                </MudAlert>
+
+                @* Show failed permissions as warning *@
+                @if (_setupResult.FailedPermissions.Any())
+                {
+                    <MudAlert Severity="Severity.Warning" Class="mb-4" Dense="true">
+                        <MudText Typo="Typo.body2">Some permissions could not be granted automatically. These may need to be added manually in Azure Portal:</MudText>
+                        <div class="d-flex flex-wrap gap-1 mt-2">
+                            @foreach (var perm in _setupResult.FailedPermissions)
+                            {
+                                <MudChip Size="Size.Small" Color="Color.Warning" Variant="Variant.Outlined">@perm</MudChip>
+                            }
+                        </div>
+                    </MudAlert>
+                }
+
+                @* Auto-filled credentials (read-only display) *@
+                <MudGrid>
+                    <MudItem xs="12" md="6">
+                        <MudTextField Value="@_model.ClientId" Label="Application (Client) ID"
+                                      Variant="Variant.Outlined" ReadOnly="true"
+                                      Adornment="Adornment.Start"
+                                      AdornmentIcon="@Icons.Material.Filled.Apps" />
+                    </MudItem>
+                    <MudItem xs="12" md="6">
+                        <MudTextField Value="@_model.SecretId" Label="Secret ID"
+                                      Variant="Variant.Outlined" ReadOnly="true"
+                                      Adornment="Adornment.Start"
+                                      AdornmentIcon="@Icons.Material.Filled.Fingerprint" />
+                    </MudItem>
+                    <MudItem xs="12">
+                        <MudTextField Value="@(new string('*', 36))" Label="Secret Value"
+                                      Variant="Variant.Outlined" ReadOnly="true"
+                                      HelperText="Secret is stored securely and will be encrypted when the tenant is created."
+                                      Adornment="Adornment.Start"
+                                      AdornmentIcon="@Icons.Material.Filled.Lock" />
+                    </MudItem>
+                </MudGrid>
+            }
+
+            @* Setup Failed Result *@
+            @if (!_isSettingUp && _setupResult != null && !_setupResult.Success)
+            {
+                <MudAlert Severity="Severity.Error" Class="my-4" Icon="@Icons.Material.Filled.Error">
+                    <MudText Typo="Typo.subtitle1" Style="font-weight: 600;">Setup Failed</MudText>
+                    <MudText Typo="Typo.body2" Style="white-space: pre-line;">@_setupResult.ErrorMessage</MudText>
+                    @if (!string.IsNullOrEmpty(_setupResult.ErrorCode))
+                    {
+                        <MudText Typo="Typo.caption" Class="mt-2" Style="color: var(--mud-palette-text-secondary);">Error Code: @_setupResult.ErrorCode</MudText>
+                    }
+                </MudAlert>
+            }
+
+            @* Action Buttons *@
+            <div class="d-flex justify-center my-4 gap-3">
+                @if (!_appCreatedSuccessfully)
+                {
+                    <MudButton Variant="Variant.Filled"
+                               Color="Color.Primary"
+                               StartIcon="@(_isSettingUp ? null : Icons.Material.Filled.AutoFixHigh)"
+                               OnClick="SetupAzureAdApp"
+                               Disabled="@(_isSettingUp || _isTesting)"
+                               Size="Size.Large"
+                               Style="min-width: 320px;">
+                        @if (_isSettingUp)
+                        {
+                            <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                            <span>Setting Up App Registration...</span>
+                        }
+                        else
+                        {
+                            <span>Set Up Azure AD App Automatically</span>
+                        }
+                    </MudButton>
+                }
+                else
+                {
+                    <MudButton Variant="Variant.Outlined"
+                               Color="Color.Primary"
+                               StartIcon="@Icons.Material.Filled.Cable"
+                               OnClick="TestConnection"
+                               Disabled="@_isTesting"
+                               Size="Size.Large"
+                               Style="min-width: 200px;">
+                        @if (_isTesting)
+                        {
+                            <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                            <span>Verifying...</span>
+                        }
+                        else
+                        {
+                            <span>Re-verify Connection</span>
+                        }
+                    </MudButton>
+                }
             </div>
         }
 
@@ -447,7 +563,13 @@
     private bool _openAiEnabled = false;
     private string? _previousIndustry = null;
 
-    private bool CanSubmit => _testResult?.Success == true && !_isSubmitting && !_isTesting;
+    // Azure AD auto-setup state
+    private bool _isSettingUp = false;
+    private AzureAdSetupResult? _setupResult = null;
+    private AzureAdSetupProgress? _setupProgress = null;
+    private bool _appCreatedSuccessfully = false;
+
+    private bool CanSubmit => _testResult?.Success == true && !_isSubmitting && !_isTesting && !_isSettingUp;
 
     protected override async Task OnInitializedAsync()
     {
@@ -591,7 +713,7 @@
         }
     }
 
-    private async Task LoginWithPortalAdmin()
+    private async Task SetupAzureAdApp()
     {
         if (string.IsNullOrWhiteSpace(_model.AzureTenantId))
         {
@@ -599,26 +721,58 @@
             return;
         }
 
-        _isTesting = true;
+        if (string.IsNullOrWhiteSpace(_model.Domain))
+        {
+            Snackbar.Add("Please enter the tenant domain in Step 1 first.", Severity.Warning);
+            return;
+        }
+
+        _isSettingUp = true;
+        _setupResult = null;
+        _setupProgress = null;
+        _appCreatedSuccessfully = false;
         _testResult = null;
         StateHasChanged();
 
         try
         {
-            _testResult = await TenantService.TestConnectionWithDelegatedAuthAsync(_model.AzureTenantId);
+            _setupResult = await AzureAdSetupService.SetupAppRegistrationAsync(
+                _model.AzureTenantId.Trim(),
+                _model.Domain.Trim().ToLowerInvariant(),
+                progress =>
+                {
+                    _setupProgress = progress;
+                    InvokeAsync(StateHasChanged);
+                });
 
-            if (_testResult.Success)
+            if (_setupResult.Success)
             {
-                Snackbar.Add($"Successfully authenticated to {_testResult.OrganizationName}!", Severity.Success);
+                // Auto-fill the credentials
+                _model.ClientId = _setupResult.ClientId!;
+                _model.SecretId = _setupResult.SecretId!;
+                _model.SecretValue = _setupResult.SecretValue!;
+                _appCreatedSuccessfully = true;
+
+                Snackbar.Add("App Registration created successfully! Verifying connection...", Severity.Success);
+
+                _isSettingUp = false;
+                _setupProgress = null;
+                StateHasChanged();
+
+                // Wait briefly for Azure AD replication before testing
+                await Task.Delay(5000);
+
+                // Auto-run connection test to verify the new credentials
+                await TestConnection();
             }
             else
             {
-                Snackbar.Add("Authentication failed. See details below.", Severity.Error);
+                Snackbar.Add($"Setup failed: {_setupResult.ErrorMessage}", Severity.Error);
             }
         }
         catch (Exception ex)
         {
-            _testResult = new ConnectionTestResult
+            _setupResult = new AzureAdSetupResult
             {
                 Success = false,
                 ErrorCode = "EXCEPTION",
@@ -628,7 +782,8 @@
         }
         finally
         {
-            _isTesting = false;
+            _isSettingUp = false;
+            _setupProgress = null;
             StateHasChanged();
         }
     }
@@ -645,6 +800,9 @@
 
         try
         {
+            // If Portal Admin auto-setup was used, we have real app credentials
+            var hasAppCredentials = _appCreatedSuccessfully || _model.AuthenticationType == AuthType.AppRegistration;
+
             // Step 1: Create the tenant
             var dto = new TenantCreateDto
             {
@@ -653,10 +811,10 @@
                 AzureTenantId = Guid.Parse(_model.AzureTenantId.Trim()),
                 Industry = _model.Industry,
                 ContactEmail = _model.ContactEmail?.Trim(),
-                AuthenticationType = _model.AuthenticationType == AuthType.AppRegistration ? "AppRegistration" : "PortalAdmin",
-                ClientId = _model.AuthenticationType == AuthType.AppRegistration ? _model.ClientId.Trim() : null,
-                SecretId = _model.AuthenticationType == AuthType.AppRegistration ? _model.SecretId.Trim() : null,
-                SecretValue = _model.AuthenticationType == AuthType.AppRegistration ? _model.SecretValue : null,
+                AuthenticationType = hasAppCredentials ? "AppRegistration" : "PortalAdmin",
+                ClientId = hasAppCredentials ? _model.ClientId.Trim() : null,
+                SecretId = hasAppCredentials ? _model.SecretId.Trim() : null,
+                SecretValue = hasAppCredentials ? _model.SecretValue : null,
                 ComplianceStandards = _model.SelectedStandards.Select(s => s.ToString()).ToList()
             };
 

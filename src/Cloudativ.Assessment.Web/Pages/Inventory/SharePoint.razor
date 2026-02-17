@@ -1,0 +1,226 @@
+@page "/inventory/sharepoint"
+@attribute [Authorize]
+@inject IInventoryService InventoryService
+@inject ITenantService TenantService
+@inject ISnackbar Snackbar
+
+<PageTitle>SharePoint Sites - Cloudativ Assessment</PageTitle>
+
+<div class="d-flex justify-space-between align-center mb-4">
+    <div>
+        <MudText Typo="Typo.h5" Style="font-weight: 600; color: #51627A;">SharePoint Sites</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">Site inventory with sharing settings and storage</MudText>
+    </div>
+    <div class="d-flex gap-2 align-center">
+        <MudSelect T="Guid?" Label="Tenant" Value="_selectedTenantId" Dense="true"
+                   Style="min-width: 200px;" Variant="Variant.Outlined"
+                   ValueChanged="@(async (Guid? v) => { _selectedTenantId = v; await LoadDataAsync(); })">
+            @foreach (var tenant in _tenants)
+            {
+                <MudSelectItem Value="@((Guid?)tenant.Id)">@tenant.Name</MudSelectItem>
+            }
+        </MudSelect>
+        <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Download">Export</MudButton>
+    </div>
+</div>
+
+<!-- Quick Stats -->
+<MudGrid Class="mb-4">
+    <MudItem xs="6" sm="2">
+        <MudPaper Class="pa-3" Elevation="1" Style="border-radius: 8px;">
+            <MudText Typo="Typo.caption" Color="Color.Secondary">Total Sites</MudText>
+            <MudText Typo="Typo.h6" Style="font-weight: 600;">@_sites.Count</MudText>
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="6" sm="2">
+        <MudPaper Class="pa-3" Elevation="1" Style="border-radius: 8px; border-left: 3px solid #ff9800;">
+            <MudText Typo="Typo.caption" Color="Color.Secondary">External Sharing</MudText>
+            <MudText Typo="Typo.h6" Style="font-weight: 600; color: #ff9800;">@_sites.Count(s => s.HasExternalSharing)</MudText>
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="6" sm="2">
+        <MudPaper Class="pa-3" Elevation="1" Style="border-radius: 8px; border-left: 3px solid #f44336;">
+            <MudText Typo="Typo.caption" Color="Color.Secondary">External Users</MudText>
+            <MudText Typo="Typo.h6" Style="font-weight: 600; color: #f44336;">@_sites.Sum(s => s.ExternalUserCount)</MudText>
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="6" sm="2">
+        <MudPaper Class="pa-3" Elevation="1" Style="border-radius: 8px; border-left: 3px solid #9C27B0;">
+            <MudText Typo="Typo.caption" Color="Color.Secondary">With Labels</MudText>
+            <MudText Typo="Typo.h6" Style="font-weight: 600;">@_sites.Count(s => !string.IsNullOrEmpty(s.SensitivityLabel))</MudText>
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="6" sm="2">
+        <MudPaper Class="pa-3" Elevation="1" Style="border-radius: 8px; border-left: 3px solid #2196F3;">
+            <MudText Typo="Typo.caption" Color="Color.Secondary">Total Storage</MudText>
+            <MudText Typo="Typo.h6" Style="font-weight: 600;">@FormatBytes(_sites.Sum(s => s.StorageUsedBytes))</MudText>
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="6" sm="2">
+        <MudPaper Class="pa-3" Elevation="1" Style="border-radius: 8px; border-left: 3px solid #9e9e9e;">
+            <MudText Typo="Typo.caption" Color="Color.Secondary">Orphaned</MudText>
+            <MudText Typo="Typo.h6" Style="font-weight: 600;">@_sites.Count(s => s.IsOrphaned)</MudText>
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
+@if (_isLoading)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+}
+else
+{
+    <MudPaper Elevation="2" Style="border-radius: 12px;">
+        <MudTable Items="_sites" Dense="true" Hover="true" Striped="true"
+                  Filter="new Func<SharePointSiteDto, bool>(FilterFunc)">
+            <ToolBarContent>
+                <MudTextField @bind-Value="_searchString" Placeholder="Search sites..." Adornment="Adornment.Start"
+                              AdornmentIcon="@Icons.Material.Filled.Search" Immediate="true" Class="mt-0" />
+                <MudSpacer />
+                <MudChip Color="@(_showExternalOnly ? Color.Warning : Color.Default)"
+                         Variant="@(_showExternalOnly ? Variant.Filled : Variant.Outlined)"
+                         OnClick="@(() => _showExternalOnly = !_showExternalOnly)">
+                    External Sharing Only
+                </MudChip>
+            </ToolBarContent>
+            <HeaderContent>
+                <MudTh>Site</MudTh>
+                <MudTh>Template</MudTh>
+                <MudTh>Sharing</MudTh>
+                <MudTh>External Users</MudTh>
+                <MudTh>Storage</MudTh>
+                <MudTh>Label</MudTh>
+                <MudTh>Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>
+                    <div class="d-flex align-center">
+                        <MudIcon Icon="@Icons.Material.Filled.Folder" Color="Color.Primary" Size="Size.Small" Class="mr-2" />
+                        <div>
+                            <MudText Typo="Typo.body2" Style="font-weight: 500;">@context.Title</MudText>
+                            <MudLink Typo="Typo.caption" Href="@context.WebUrl" Target="_blank">@TruncateUrl(context.WebUrl)</MudLink>
+                        </div>
+                    </div>
+                </MudTd>
+                <MudTd>
+                    <MudChip Size="Size.Small" Color="Color.Default" Variant="Variant.Outlined">@context.Template</MudChip>
+                </MudTd>
+                <MudTd>
+                    @if (context.HasExternalSharing)
+                    {
+                        <MudIcon Icon="@Icons.Material.Filled.Public" Color="Color.Warning" Size="Size.Small" />
+                    }
+                    else
+                    {
+                        <MudIcon Icon="@Icons.Material.Filled.Lock" Color="Color.Success" Size="Size.Small" />
+                    }
+                </MudTd>
+                <MudTd>
+                    @if (context.ExternalUserCount > 0)
+                    {
+                        <MudChip Size="Size.Small" Color="Color.Warning" Variant="Variant.Filled">@context.ExternalUserCount</MudChip>
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">0</MudText>
+                    }
+                </MudTd>
+                <MudTd>@FormatBytes(context.StorageUsedBytes)</MudTd>
+                <MudTd>
+                    @if (!string.IsNullOrEmpty(context.SensitivityLabel))
+                    {
+                        <MudChip Size="Size.Small" Color="Color.Info" Variant="Variant.Outlined">@context.SensitivityLabel</MudChip>
+                    }
+                </MudTd>
+                <MudTd>
+                    <MudIconButton Icon="@Icons.Material.Filled.OpenInNew" Size="Size.Small"
+                                   Href="@context.WebUrl" Target="_blank" />
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText Typo="Typo.body1" Class="pa-4 text-center">No SharePoint sites found.</MudText>
+            </NoRecordsContent>
+            <PagerContent>
+                <MudTablePager PageSizeOptions="new int[] { 25, 50, 100, 250 }" />
+            </PagerContent>
+        </MudTable>
+    </MudPaper>
+}
+
+@code {
+    [SupplyParameterFromQuery]
+    public Guid? TenantId { get; set; }
+
+    private bool _isLoading = true;
+    private List<TenantDto> _tenants = new();
+    private Guid? _selectedTenantId;
+    private List<SharePointSiteDto> _sites = new();
+    private string _searchString = "";
+    private bool _showExternalOnly = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadTenantsAsync();
+        _selectedTenantId = TenantId ?? _tenants.FirstOrDefault()?.Id;
+
+        if (_selectedTenantId.HasValue)
+            await LoadDataAsync();
+
+        _isLoading = false;
+    }
+
+    private async Task LoadTenantsAsync()
+    {
+        try
+        {
+            _tenants = (await TenantService.GetAllAsync()).ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading tenants: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task LoadDataAsync()
+    {
+        if (!_selectedTenantId.HasValue) return;
+
+        _isLoading = true;
+        try
+        {
+            var filter = new SharePointSiteFilter { TenantId = _selectedTenantId.Value, PageSize = 500 };
+            var result = await InventoryService.GetSharePointSitesAsync(_selectedTenantId.Value, filter);
+            _sites = result.Items.ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading data: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private bool FilterFunc(SharePointSiteDto site)
+    {
+        if (_showExternalOnly && !site.HasExternalSharing) return false;
+        if (string.IsNullOrWhiteSpace(_searchString)) return true;
+        return site.Title.Contains(_searchString, StringComparison.OrdinalIgnoreCase) ||
+               site.WebUrl.Contains(_searchString, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private string FormatBytes(long bytes)
+    {
+        if (bytes >= 1_073_741_824) return $"{bytes / 1_073_741_824.0:F1} GB";
+        if (bytes >= 1_048_576) return $"{bytes / 1_048_576.0:F1} MB";
+        if (bytes >= 1_024) return $"{bytes / 1_024.0:F1} KB";
+        return $"{bytes} B";
+    }
+
+    private string TruncateUrl(string url)
+    {
+        if (url.Length <= 50) return url;
+        return url.Substring(0, 47) + "...";
+    }
+}
