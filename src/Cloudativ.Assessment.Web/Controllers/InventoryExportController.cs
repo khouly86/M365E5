@@ -388,4 +388,40 @@ public class InventoryExportController : ControllerBase
     }
 
     #endregion
+
+    #region License Utilization
+
+    [HttpGet("licenses/{tenantId}/excel")]
+    public async Task<IActionResult> ExportLicensesToExcel(Guid tenantId, CancellationToken ct = default)
+    {
+        try
+        {
+            var bytes = await _exportService.ExportLicensesToExcelAsync(tenantId, ct);
+            return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                $"LicenseUtilization_{DateTime.UtcNow:yyyyMMdd_HHmmss}.xlsx");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error exporting licenses to Excel");
+            return StatusCode(500, "Export failed");
+        }
+    }
+
+    [HttpGet("licenses/{tenantId}/pdf")]
+    public async Task<IActionResult> ExportLicensesToPdf(Guid tenantId, CancellationToken ct = default)
+    {
+        try
+        {
+            var tenant = await _tenantService.GetByIdAsync(tenantId);
+            var bytes = await _exportService.ExportLicensesToPdfAsync(tenantId, tenant?.Name ?? "Unknown", ct);
+            return File(bytes, "application/pdf", $"LicenseUtilization_{DateTime.UtcNow:yyyyMMdd_HHmmss}.pdf");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error exporting licenses to PDF");
+            return StatusCode(500, "Export failed");
+        }
+    }
+
+    #endregion
 }

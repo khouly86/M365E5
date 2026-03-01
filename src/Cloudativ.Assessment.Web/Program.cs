@@ -6,13 +6,42 @@ using Hangfire;
 using Hangfire.Dashboard;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Hosting.WindowsServices;
 using MudBlazor.Services;
 using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Windows Service support
+builder.Host.UseWindowsService(options =>
+{
+    options.ServiceName = "CloudativAssessment";
+});
+
+// When running as a Windows Service, fix the working directory
+// (services default to C:\Windows\System32)
+if (WindowsServiceHelpers.IsWindowsService())
+{
+    var exePath = Environment.ProcessPath;
+    if (exePath != null)
+    {
+        var contentRoot = Path.GetDirectoryName(exePath)!;
+        Directory.SetCurrentDirectory(contentRoot);
+    }
+}
+
+// Configure Kestrel from appsettings (used by installer for HTTPS cert)
+builder.WebHost.ConfigureKestrel((context, serverOptions) =>
+{
+    var kestrelSection = context.Configuration.GetSection("Kestrel");
+    if (kestrelSection.Exists())
+    {
+        serverOptions.Configure(kestrelSection);
+    }
+});
+
 // Configure Serilog
-builder.Services.AddSerilogLogging();
+builder.Services.AddSerilogLogging(builder.Configuration);
 builder.Host.UseSerilog();
 
 // Add services to the container

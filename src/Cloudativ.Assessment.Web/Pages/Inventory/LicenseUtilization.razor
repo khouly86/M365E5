@@ -22,7 +22,9 @@
                 <MudSelectItem Value="@((Guid?)tenant.Id)">@tenant.Name</MudSelectItem>
             }
         </MudSelect>
-        <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Download">Export Report</MudButton>
+        <Cloudativ.Assessment.Web.Shared.Components.ExportDropdown
+            ExportType="licenses"
+            TenantId="_selectedTenantId" />
     </div>
 </div>
 

@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  cloudativ-assessment:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+    container_name: cloudativ-assessment
+    ports:
+      - "${APP_PORT:-5000}:8080"
+    env_file:
+      - ../config/.env.production
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ConnectionStrings__DefaultConnection=Data Source=/app/data/cloudativ_assessment.db
+      - Database__Provider=SQLite
+    volumes:
+      - cloudativ-data:/app/data
+      - cloudativ-logs:/app/logs
+    networks:
+      - cloudativ-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  cloudativ-data:
+    driver: local
+  cloudativ-logs:
+    driver: local
+
+networks:
+  cloudativ-network:
+    driver: bridge

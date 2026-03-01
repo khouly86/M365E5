@@ -32,4 +32,8 @@ public interface IInventoryExportService
     // Service Principals
     Task<byte[]> ExportServicePrincipalsToExcelAsync(Guid tenantId, Guid? snapshotId, CancellationToken ct = default);
     Task<byte[]> ExportServicePrincipalsToPdfAsync(Guid tenantId, Guid? snapshotId, string tenantName, CancellationToken ct = default);
+
+    // License Utilization
+    Task<byte[]> ExportLicensesToExcelAsync(Guid tenantId, CancellationToken ct = default);
+    Task<byte[]> ExportLicensesToPdfAsync(Guid tenantId, string tenantName, CancellationToken ct = default);
 }

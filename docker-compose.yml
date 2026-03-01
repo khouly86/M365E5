@@ -1,19 +1,26 @@
+# Cloudativ Assessment - Docker Compose
+#
+# Quick start:     docker compose up -d
+# With PostgreSQL: docker compose --profile postgres up -d
+# Stop:            docker compose down
+# View logs:       docker compose logs -f
+
 version: '3.8'
 
 services:
-  # Cloudativ Assessment Web Application
   cloudativ-assessment:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: cloudativ-assessment
     ports:
-      - "5000:8080"
+      - "${APP_PORT:-5000}:8080"
+    env_file:
+      - deploy/config/.env.production
     environment:
       - ASPNETCORE_ENVIRONMENT=Production
       - ConnectionStrings__DefaultConnection=Data Source=/app/data/cloudativ_assessment.db
       - Database__Provider=SQLite
-      - Logging__LogLevel__Default=Information
     volumes:
       - cloudativ-data:/app/data
       - cloudativ-logs:/app/logs
@@ -27,31 +34,18 @@ services:
       retries: 3
       start_period: 10s
 
-volumes:
-  cloudativ-data:
-    driver: local
-  cloudativ-logs:
-    driver: local
-
-networks:
-  cloudativ-network:
-    driver: bridge
-
-# Alternative profile for PostgreSQL database
-# To use: docker-compose --profile postgres up -d
----
-version: '3.8'
-
-services:
+  # PostgreSQL (activate with --profile postgres)
   cloudativ-assessment-postgres:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: cloudativ-assessment-postgres
+    container_name: cloudativ-assessment-pg
     profiles:
       - postgres
     ports:
-      - "5000:8080"
+      - "${APP_PORT:-5000}:8080"
+    env_file:
+      - deploy/config/.env.production
     environment:
       - ASPNETCORE_ENVIRONMENT=Production
       - ConnectionStrings__DefaultConnection=Host=postgres;Database=cloudativ;Username=cloudativ;Password=${POSTGRES_PASSWORD:-CloudativSecure123!}
@@ -86,5 +80,13 @@ services:
     restart: unless-stopped
 
 volumes:
+  cloudativ-data:
+    driver: local
+  cloudativ-logs:
+    driver: local
   postgres-data:
     driver: local
+
+networks:
+  cloudativ-network:
+    driver: bridge

@@ -1,6 +1,7 @@
 using Cloudativ.Assessment.Application.DTOs;
 using Cloudativ.Assessment.Application.Interfaces;
 using Cloudativ.Assessment.Domain.Enums;
+using Cloudativ.Assessment.Infrastructure.Services.Export;
 using ClosedXML.Excel;
 using Microsoft.Extensions.Logging;
 using QuestPDF.Fluent;
@@ -18,12 +19,10 @@ public class ReportService : IReportService
 
     // Brand colors
     private static readonly string PrimaryColor = "#51627A";
-    private static readonly string AccentColor = "#E0FC8E";
     private static readonly string CriticalColor = "#DC2626";
     private static readonly string HighColor = "#EA580C";
     private static readonly string MediumColor = "#CA8A04";
     private static readonly string LowColor = "#16A34A";
-    private static readonly string InfoColor = "#0078D4";
 
     public ReportService(
         IAssessmentService assessmentService,
@@ -73,41 +72,32 @@ public class ReportService : IReportService
     {
         container.Column(column =>
         {
-            column.Item().Row(row =>
+            // Accent bar
+            column.Item().Height(4).Background(PdfReportComponents.SecondaryColor);
+
+            column.Item().PaddingTop(8).PaddingBottom(8).Row(row =>
             {
                 row.RelativeItem().Column(col =>
                 {
-                    col.Item().Text("Cloudativ").FontSize(24).Bold().FontColor(PrimaryColor);
-                    col.Item().Text("M365 Security Assessment Report").FontSize(14).FontColor(PrimaryColor);
+                    col.Item().Text("Cloudativ M365 Security Assessment").FontSize(20).Bold()
+                        .FontColor(PdfReportComponents.SecondaryColor);
+                    col.Item().PaddingTop(2).Text(tenantName).FontSize(11)
+                        .FontColor(PdfReportComponents.LightTextColor);
                 });
-
-                row.ConstantItem(100).Column(col =>
+                row.ConstantItem(120).Column(col =>
                 {
-                    col.Item().AlignRight().Text($"Score: {assessment.OverallScore ?? 0}%")
-                        .FontSize(20).Bold().FontColor(GetScoreColor(assessment.OverallScore ?? 0));
-                    col.Item().AlignRight().Text(GetGrade(assessment.OverallScore ?? 0))
-                        .FontSize(14).FontColor(PrimaryColor);
+                    var score = assessment.OverallScore ?? 0;
+                    col.Item().AlignRight().Text($"{score}%").FontSize(28).Bold()
+                        .FontColor(GetScoreColor(score));
+                    col.Item().AlignRight().Text($"Grade {GetGrade(score)}").FontSize(12)
+                        .FontColor(PdfReportComponents.SecondaryColor);
+                    col.Item().AlignRight().PaddingTop(2)
+                        .Text($"{assessment.StartedAt:yyyy-MM-dd HH:mm}").FontSize(8)
+                        .FontColor(PdfReportComponents.LightTextColor);
                 });
             });
 
-            column.Item().PaddingVertical(10).LineHorizontal(2).LineColor(PrimaryColor);
-
-            column.Item().Row(row =>
-            {
-                row.RelativeItem().Column(col =>
-                {
-                    col.Item().Text($"Tenant: {tenantName}").FontSize(11).SemiBold();
-                    col.Item().Text($"Assessment Date: {assessment.StartedAt:MMMM dd, yyyy HH:mm}").FontSize(9);
-                });
-                row.RelativeItem().Column(col =>
-                {
-                    col.Item().AlignRight().Text($"Status: {assessment.Status}").FontSize(9);
-                    if (assessment.Duration.HasValue)
-                        col.Item().AlignRight().Text($"Duration: {assessment.Duration.Value:mm\\:ss}").FontSize(9);
-                });
-            });
-
-            column.Item().PaddingTop(15);
+            column.Item().LineHorizontal(1).LineColor(PdfReportComponents.BorderColor);
         });
     }
 
@@ -117,29 +107,29 @@ public class ReportService : IReportService
 
         container.Column(column =>
         {
-            // Executive Summary
+            // Executive Summary with stat cards + charts
             column.Item().Element(c => ComposeExecutiveSummary(c, assessment, findingsList));
 
-            column.Item().PaddingVertical(15);
+            column.Item().PaddingVertical(12);
 
-            // M365 Resources Overview
+            // M365 Resources Overview with stat cards
             if (resourceStats != null && resourceStats.TotalUsers > 0)
             {
                 column.Item().Element(c => ComposeResourcesOverview(c, resourceStats));
-                column.Item().PaddingVertical(15);
+                column.Item().PaddingVertical(12);
             }
 
-            // Domain Scores
+            // Domain Scores with bar chart + branded table
             column.Item().Element(c => ComposeDomainScores(c, assessment));
 
-            column.Item().PaddingVertical(15);
+            column.Item().PaddingVertical(12);
 
-            // Findings Summary
+            // Findings Summary with charts
             column.Item().Element(c => ComposeFindingsSummary(c, findingsList));
 
-            column.Item().PaddingVertical(15);
+            column.Item().PaddingVertical(12);
 
-            // Detailed Findings
+            // Detailed Findings with branded cards
             column.Item().Element(c => ComposeDetailedFindings(c, findingsList));
         });
     }
@@ -148,118 +138,39 @@ public class ReportService : IReportService
     {
         container.Column(column =>
         {
-            column.Item().Text("M365 Resources Overview").FontSize(16).Bold().FontColor(PrimaryColor);
+            column.Item().Element(c => PdfReportComponents.SectionTitle(c, "M365 Resources Overview"));
             column.Item().PaddingTop(10);
 
-            column.Item().Border(1).BorderColor("#E5E7EB").Padding(15).Column(resourceCol =>
+            // Row 1: Identity & Access stat cards
+            column.Item().Element(c => PdfReportComponents.ComposeStatCards(c, new List<StatCardData>
             {
-                // First row: Users, Guests, Admins, Devices
-                resourceCol.Item().Row(row =>
-                {
-                    row.RelativeItem().Column(col =>
-                    {
-                        col.Item().Text("Total Users").FontSize(10).FontColor("#6B7280");
-                        col.Item().Text($"{resourceStats.TotalUsers:N0}").FontSize(24).Bold().FontColor(PrimaryColor);
-                        col.Item().Text($"{resourceStats.EnabledUsers:N0} enabled").FontSize(8).FontColor("#6B7280");
-                    });
+                new("Total Users", $"{resourceStats.TotalUsers:N0}", $"{resourceStats.EnabledUsers:N0} enabled", PdfReportComponents.SecondaryColor),
+                new("Guest Users", $"{resourceStats.GuestUsers:N0}", null, PdfReportComponents.InfoColor),
+                new("Admin Users", $"{resourceStats.AdminUsers:N0}", $"{resourceStats.GlobalAdmins} Global Admins", HighColor),
+                new("Risky Users", $"{resourceStats.RiskyUsers}", null, resourceStats.RiskyUsers > 0 ? CriticalColor : LowColor)
+            }));
 
-                    row.RelativeItem().Column(col =>
-                    {
-                        col.Item().Text("Guest Users").FontSize(10).FontColor("#6B7280");
-                        col.Item().Text($"{resourceStats.GuestUsers:N0}").FontSize(24).Bold().FontColor(InfoColor);
-                    });
+            column.Item().PaddingTop(8);
 
-                    row.RelativeItem().Column(col =>
-                    {
-                        col.Item().Text("Admin Users").FontSize(10).FontColor("#6B7280");
-                        col.Item().Text($"{resourceStats.AdminUsers:N0}").FontSize(24).Bold().FontColor(HighColor);
-                        col.Item().Text($"{resourceStats.GlobalAdmins} Global Admins").FontSize(8).FontColor("#6B7280");
-                    });
+            // Row 2: Infrastructure stat cards
+            column.Item().Element(c => PdfReportComponents.ComposeStatCards(c, new List<StatCardData>
+            {
+                new("Devices", $"{resourceStats.TotalDevices:N0}", $"{resourceStats.ManagedDevices:N0} managed"),
+                new("Enterprise Apps", $"{resourceStats.EnterpriseApps:N0}", $"{resourceStats.AppRegistrations:N0} registrations"),
+                new("CA Policies", $"{resourceStats.ConditionalAccessPolicies:N0}", $"{resourceStats.EnabledCaPolicies} enabled"),
+                new("Groups", $"{resourceStats.TotalGroups:N0}", $"{resourceStats.Microsoft365Groups:N0} M365 groups")
+            }));
 
-                    row.RelativeItem().Column(col =>
-                    {
-                        col.Item().Text("Devices").FontSize(10).FontColor("#6B7280");
-                        col.Item().Text($"{resourceStats.TotalDevices:N0}").FontSize(24).Bold().FontColor(PrimaryColor);
-                        col.Item().Text($"{resourceStats.ManagedDevices:N0} managed").FontSize(8).FontColor("#6B7280");
-                    });
-                });
+            column.Item().PaddingTop(8);
 
-                resourceCol.Item().PaddingTop(15);
-
-                // Second row: Apps, CA Policies, Groups, Mailboxes
-                resourceCol.Item().Row(row =>
-                {
-                    row.RelativeItem().Column(col =>
-                    {
-                        col.Item().Text("Enterprise Apps").FontSize(10).FontColor("#6B7280");
-                        col.Item().Text($"{resourceStats.EnterpriseApps:N0}").FontSize(24).Bold().FontColor("#9C27B0");
-                        col.Item().Text($"{resourceStats.AppRegistrations:N0} registrations").FontSize(8).FontColor("#6B7280");
-                    });
-
-                    row.RelativeItem().Column(col =>
-                    {
-                        col.Item().Text("CA Policies").FontSize(10).FontColor("#6B7280");
-                        col.Item().Text($"{resourceStats.ConditionalAccessPolicies:N0}").FontSize(24).Bold().FontColor(MediumColor);
-                        col.Item().Text($"{resourceStats.EnabledCaPolicies} enabled").FontSize(8).FontColor("#6B7280");
-                    });
-
-                    row.RelativeItem().Column(col =>
-                    {
-                        col.Item().Text("Groups").FontSize(10).FontColor("#6B7280");
-                        col.Item().Text($"{resourceStats.TotalGroups:N0}").FontSize(24).Bold().FontColor("#3F51B5");
-                        col.Item().Text($"{resourceStats.Microsoft365Groups:N0} M365 groups").FontSize(8).FontColor("#6B7280");
-                    });
-
-                    row.RelativeItem().Column(col =>
-                    {
-                        col.Item().Text("Mailboxes").FontSize(10).FontColor("#6B7280");
-                        col.Item().Text($"{resourceStats.Mailboxes:N0}").FontSize(24).Bold().FontColor(InfoColor);
-                        col.Item().Text($"{resourceStats.SharedMailboxes:N0} shared").FontSize(8).FontColor("#6B7280");
-                    });
-                });
-
-                resourceCol.Item().PaddingTop(15);
-
-                // Third row: SharePoint, Teams, Licenses, Risky Users
-                resourceCol.Item().Row(row =>
-                {
-                    row.RelativeItem().Column(col =>
-                    {
-                        col.Item().Text("SharePoint Sites").FontSize(10).FontColor("#6B7280");
-                        col.Item().Text($"{resourceStats.SharePointSites:N0}").FontSize(24).Bold().FontColor("#038387");
-                    });
-
-                    row.RelativeItem().Column(col =>
-                    {
-                        col.Item().Text("Teams").FontSize(10).FontColor("#6B7280");
-                        col.Item().Text($"{resourceStats.TeamsCount:N0}").FontSize(24).Bold().FontColor("#6264A7");
-                    });
-
-                    row.RelativeItem().Column(col =>
-                    {
-                        col.Item().Text("Licenses").FontSize(10).FontColor("#6B7280");
-                        col.Item().Text($"{resourceStats.TotalLicenses:N0}").FontSize(24).Bold().FontColor(PrimaryColor);
-                        col.Item().Text($"{resourceStats.AssignedLicenses:N0} assigned").FontSize(8).FontColor("#6B7280");
-                    });
-
-                    if (resourceStats.RiskyUsers > 0)
-                    {
-                        row.RelativeItem().Column(col =>
-                        {
-                            col.Item().Text("Risky Users").FontSize(10).FontColor("#6B7280");
-                            col.Item().Text($"{resourceStats.RiskyUsers}").FontSize(24).Bold().FontColor(CriticalColor);
-                        });
-                    }
-                    else
-                    {
-                        row.RelativeItem().Column(col =>
-                        {
-                            col.Item().Text("Risky Users").FontSize(10).FontColor("#6B7280");
-                            col.Item().Text("0").FontSize(24).Bold().FontColor(LowColor);
-                        });
-                    }
-                });
-            });
+            // Row 3: Collaboration stat cards
+            column.Item().Element(c => PdfReportComponents.ComposeStatCards(c, new List<StatCardData>
+            {
+                new("Mailboxes", $"{resourceStats.Mailboxes:N0}", $"{resourceStats.SharedMailboxes:N0} shared"),
+                new("SharePoint Sites", $"{resourceStats.SharePointSites:N0}"),
+                new("Teams", $"{resourceStats.TeamsCount:N0}"),
+                new("Licenses", $"{resourceStats.TotalLicenses:N0}", $"{resourceStats.AssignedLicenses:N0} assigned")
+            }));
         });
     }
 
@@ -269,117 +180,82 @@ public class ReportService : IReportService
         var highCount = findings.Count(f => f.Severity == Severity.High);
         var mediumCount = findings.Count(f => f.Severity == Severity.Medium);
         var lowCount = findings.Count(f => f.Severity == Severity.Low);
+        var score = assessment.OverallScore ?? 0;
+
+        var totalPassed = assessment.DomainScores.Values.Sum(d => d.PassedChecks);
+        var totalFailed = assessment.DomainScores.Values.Sum(d => d.FailedChecks);
 
         container.Column(column =>
         {
-            column.Item().Text("Executive Summary").FontSize(16).Bold().FontColor(PrimaryColor);
+            column.Item().Element(c => PdfReportComponents.SectionTitle(c, "Executive Summary"));
             column.Item().PaddingTop(10);
 
-            column.Item().Border(1).BorderColor("#E5E7EB").Padding(15).Column(summaryCol =>
+            // Stat cards row
+            column.Item().Element(c => PdfReportComponents.ComposeStatCards(c, new List<StatCardData>
             {
-                summaryCol.Item().Row(row =>
+                new("Overall Score", $"{score}%", $"Grade {GetGrade(score)}", GetScoreColor(score)),
+                new("Domains Assessed", $"{assessment.DomainScores.Count}"),
+                new("Total Findings", $"{findings.Count}", $"{criticalCount + highCount} Critical/High",
+                    criticalCount + highCount > 0 ? PdfReportComponents.DangerColor : null),
+                new("Checks Passed", $"{totalPassed}", $"{totalFailed} failed", PdfReportComponents.SuccessColor)
+            }));
+
+            column.Item().PaddingTop(12);
+
+            // Chart Row 1: Findings by Severity donut + Domain Scores bar chart
+            column.Item().Element(c => PdfReportComponents.ChartRow(c,
+                left => PdfChartHelper.DonutChart(left, new List<ChartSegment>
                 {
-                    row.RelativeItem().Column(col =>
-                    {
-                        col.Item().Text("Overall Security Score").FontSize(10).FontColor("#6B7280");
-                        col.Item().Text($"{assessment.OverallScore ?? 0}%").FontSize(28).Bold()
-                            .FontColor(GetScoreColor(assessment.OverallScore ?? 0));
-                    });
+                    new("Critical", criticalCount, CriticalColor),
+                    new("High", highCount, HighColor),
+                    new("Medium", mediumCount, MediumColor),
+                    new("Low", lowCount, LowColor)
+                }, "Findings", $"{findings.Count}", "Findings by Severity"),
+                right => PdfChartHelper.HorizontalBarChart(right,
+                    assessment.DomainScores.Values.Select(d =>
+                        new BarChartItem(d.DisplayName, d.Score, GetScoreBarColor(d.Score))).ToList(),
+                    "Domain Scores", 8)
+            ));
 
-                    row.RelativeItem().Column(col =>
-                    {
-                        col.Item().Text("Domains Assessed").FontSize(10).FontColor("#6B7280");
-                        col.Item().Text($"{assessment.DomainScores.Count}").FontSize(28).Bold().FontColor(PrimaryColor);
-                    });
+            column.Item().PaddingTop(10);
 
-                    row.RelativeItem().Column(col =>
-                    {
-                        col.Item().Text("Total Findings").FontSize(10).FontColor("#6B7280");
-                        col.Item().Text($"{findings.Count}").FontSize(28).Bold().FontColor(PrimaryColor);
-                    });
-                });
+            // Chart Row 2: Passed vs Failed donut + Findings by Domain bar chart
+            var domainFindings = findings
+                .GroupBy(f => f.DomainDisplayName)
+                .Select(g => new BarChartItem(g.Key, g.Count(), PdfReportComponents.SecondaryColor))
+                .OrderByDescending(b => b.Value)
+                .ToList();
 
-                summaryCol.Item().PaddingTop(15);
-
-                summaryCol.Item().Row(row =>
+            column.Item().Element(c => PdfReportComponents.ChartRow(c,
+                left => PdfChartHelper.DonutChart(left, new List<ChartSegment>
                 {
-                    row.RelativeItem().Background(CriticalColor).Padding(8).Column(col =>
-                    {
-                        col.Item().Text("Critical").FontSize(9).FontColor("#FFFFFF");
-                        col.Item().Text($"{criticalCount}").FontSize(18).Bold().FontColor("#FFFFFF");
-                    });
-                    row.ConstantItem(5);
-                    row.RelativeItem().Background(HighColor).Padding(8).Column(col =>
-                    {
-                        col.Item().Text("High").FontSize(9).FontColor("#FFFFFF");
-                        col.Item().Text($"{highCount}").FontSize(18).Bold().FontColor("#FFFFFF");
-                    });
-                    row.ConstantItem(5);
-                    row.RelativeItem().Background(MediumColor).Padding(8).Column(col =>
-                    {
-                        col.Item().Text("Medium").FontSize(9).FontColor("#FFFFFF");
-                        col.Item().Text($"{mediumCount}").FontSize(18).Bold().FontColor("#FFFFFF");
-                    });
-                    row.ConstantItem(5);
-                    row.RelativeItem().Background(LowColor).Padding(8).Column(col =>
-                    {
-                        col.Item().Text("Low").FontSize(9).FontColor("#FFFFFF");
-                        col.Item().Text($"{lowCount}").FontSize(18).Bold().FontColor("#FFFFFF");
-                    });
-                });
-            });
+                    new("Passed", totalPassed, PdfReportComponents.SuccessColor),
+                    new("Failed", totalFailed, PdfReportComponents.DangerColor)
+                }, "Checks", $"{(totalPassed + totalFailed > 0 ? totalPassed * 100 / (totalPassed + totalFailed) : 0)}%", "Compliance Checks"),
+                right => PdfChartHelper.HorizontalBarChart(right, domainFindings,
+                    "Findings by Domain", 8)
+            ));
         });
     }
 
     private void ComposeDomainScores(IContainer container, AssessmentRunDto assessment)
     {
+        var headers = new[] { "Domain", "Score", "Grade", "Critical", "High", "Medium", "Low" };
+        var rows = assessment.DomainScores.Values
+            .OrderByDescending(d => d.CriticalCount + d.HighCount)
+            .Select(d => new[]
+            {
+                d.DisplayName, $"{d.Score}%", d.Grade,
+                $"{d.CriticalCount}", $"{d.HighCount}", $"{d.MediumCount}", $"{d.LowCount}"
+            })
+            .ToList();
+
         container.Column(column =>
         {
-            column.Item().Text("Domain Scores").FontSize(16).Bold().FontColor(PrimaryColor);
+            column.Item().Element(c => PdfReportComponents.SectionTitle(c, "Domain Scores"));
             column.Item().PaddingTop(10);
-
-            column.Item().Table(table =>
-            {
-                table.ColumnsDefinition(columns =>
-                {
-                    columns.RelativeColumn(3);
-                    columns.RelativeColumn(1);
-                    columns.RelativeColumn(1);
-                    columns.RelativeColumn(1);
-                    columns.RelativeColumn(1);
-                    columns.RelativeColumn(1);
-                    columns.RelativeColumn(1);
-                });
-
-                // Header
-                table.Header(header =>
-                {
-                    header.Cell().Background(PrimaryColor).Padding(5).Text("Domain").FontColor("#FFFFFF").FontSize(9).SemiBold();
-                    header.Cell().Background(PrimaryColor).Padding(5).Text("Score").FontColor("#FFFFFF").FontSize(9).SemiBold();
-                    header.Cell().Background(PrimaryColor).Padding(5).Text("Grade").FontColor("#FFFFFF").FontSize(9).SemiBold();
-                    header.Cell().Background(PrimaryColor).Padding(5).Text("Critical").FontColor("#FFFFFF").FontSize(9).SemiBold();
-                    header.Cell().Background(PrimaryColor).Padding(5).Text("High").FontColor("#FFFFFF").FontSize(9).SemiBold();
-                    header.Cell().Background(PrimaryColor).Padding(5).Text("Medium").FontColor("#FFFFFF").FontSize(9).SemiBold();
-                    header.Cell().Background(PrimaryColor).Padding(5).Text("Low").FontColor("#FFFFFF").FontSize(9).SemiBold();
-                });
-
-                // Data rows
-                var index = 0;
-                foreach (var domain in assessment.DomainScores.Values.OrderByDescending(d => d.CriticalCount + d.HighCount))
-                {
-                    var bgColor = index % 2 == 0 ? "#FFFFFF" : "#F9FAFB";
-
-                    table.Cell().Background(bgColor).Padding(5).Text(domain.DisplayName).FontSize(9);
-                    table.Cell().Background(bgColor).Padding(5).Text($"{domain.Score}%").FontSize(9).FontColor(GetScoreColor(domain.Score));
-                    table.Cell().Background(bgColor).Padding(5).Text(domain.Grade).FontSize(9);
-                    table.Cell().Background(bgColor).Padding(5).Text($"{domain.CriticalCount}").FontSize(9).FontColor(domain.CriticalCount > 0 ? CriticalColor : "#000000");
-                    table.Cell().Background(bgColor).Padding(5).Text($"{domain.HighCount}").FontSize(9).FontColor(domain.HighCount > 0 ? HighColor : "#000000");
-                    table.Cell().Background(bgColor).Padding(5).Text($"{domain.MediumCount}").FontSize(9).FontColor(domain.MediumCount > 0 ? MediumColor : "#000000");
-                    table.Cell().Background(bgColor).Padding(5).Text($"{domain.LowCount}").FontSize(9).FontColor(domain.LowCount > 0 ? LowColor : "#000000");
-
-                    index++;
-                }
-            });
+            column.Item().Element(c => PdfReportComponents.ComposeDataTable(c, headers, rows,
+                new[] { 3, 4, 5, 6 }));
         });
     }
 
@@ -390,29 +266,23 @@ public class ReportService : IReportService
             .OrderByDescending(g => g.Count(f => f.Severity == Severity.Critical) + g.Count(f => f.Severity == Severity.High))
             .ToList();
 
+        var headers = new[] { "Domain", "Critical", "High", "Medium", "Low", "Total" };
+        var rows = groupedFindings.Select(g => new[]
+        {
+            g.Key,
+            $"{g.Count(f => f.Severity == Severity.Critical)}",
+            $"{g.Count(f => f.Severity == Severity.High)}",
+            $"{g.Count(f => f.Severity == Severity.Medium)}",
+            $"{g.Count(f => f.Severity == Severity.Low)}",
+            $"{g.Count()}"
+        }).ToList();
+
         container.Column(column =>
         {
-            column.Item().Text("Findings by Domain").FontSize(16).Bold().FontColor(PrimaryColor);
+            column.Item().Element(c => PdfReportComponents.SectionTitle(c, "Findings by Domain"));
             column.Item().PaddingTop(10);
-
-            foreach (var group in groupedFindings)
-            {
-                column.Item().Border(1).BorderColor("#E5E7EB").Padding(10).Column(domainCol =>
-                {
-                    domainCol.Item().Text(group.Key).FontSize(12).SemiBold().FontColor(PrimaryColor);
-                    domainCol.Item().PaddingTop(5);
-
-                    var critical = group.Count(f => f.Severity == Severity.Critical);
-                    var high = group.Count(f => f.Severity == Severity.High);
-                    var medium = group.Count(f => f.Severity == Severity.Medium);
-                    var low = group.Count(f => f.Severity == Severity.Low);
-
-                    domainCol.Item().Text($"Critical: {critical} | High: {high} | Medium: {medium} | Low: {low}")
-                        .FontSize(9).FontColor("#6B7280");
-                });
-
-                column.Item().PaddingTop(5);
-            }
+            column.Item().Element(c => PdfReportComponents.ComposeDataTable(c, headers, rows,
+                new[] { 1, 2, 3, 4 }));
         });
     }
 
@@ -426,42 +296,48 @@ public class ReportService : IReportService
         container.Column(column =>
         {
             column.Item().PageBreak();
-            column.Item().Text("Detailed Findings").FontSize(16).Bold().FontColor(PrimaryColor);
+            column.Item().Element(c => PdfReportComponents.SectionTitle(c, "Detailed Findings"));
             column.Item().PaddingTop(10);
 
             foreach (var finding in sortedFindings)
             {
-                column.Item().Border(1).BorderColor("#E5E7EB").Padding(10).Column(findingCol =>
+                column.Item().Border(1).BorderColor(PdfReportComponents.BorderColor).Padding(10).Column(findingCol =>
                 {
                     findingCol.Item().Row(row =>
                     {
-                        row.ConstantItem(70).Background(GetSeverityColor(finding.Severity)).Padding(3)
-                            .AlignCenter().Text(finding.Severity.ToString()).FontSize(8).FontColor("#FFFFFF").SemiBold();
+                        row.ConstantItem(70).Element(c => PdfReportComponents.StatusBadge(c, finding.Severity.ToString()));
                         row.ConstantItem(5);
-                        row.RelativeItem().Text(finding.Title).FontSize(11).SemiBold();
+                        row.RelativeItem().Text(finding.Title).FontSize(11).SemiBold()
+                            .FontColor(PdfReportComponents.TextColor);
                     });
 
                     findingCol.Item().PaddingTop(5);
-                    findingCol.Item().Text($"Domain: {finding.DomainDisplayName}").FontSize(8).FontColor("#6B7280");
+                    findingCol.Item().Text($"Domain: {finding.DomainDisplayName}").FontSize(8)
+                        .FontColor(PdfReportComponents.LightTextColor);
 
                     if (!string.IsNullOrEmpty(finding.Description))
                     {
                         findingCol.Item().PaddingTop(5);
-                        findingCol.Item().Text("Description:").FontSize(9).SemiBold();
-                        findingCol.Item().Text(finding.Description).FontSize(9);
+                        findingCol.Item().Text("Description:").FontSize(9).SemiBold()
+                            .FontColor(PdfReportComponents.TextColor);
+                        findingCol.Item().Text(finding.Description).FontSize(9)
+                            .FontColor(PdfReportComponents.TextColor);
                     }
 
                     if (!string.IsNullOrEmpty(finding.Remediation))
                     {
                         findingCol.Item().PaddingTop(5);
-                        findingCol.Item().Text("Remediation:").FontSize(9).SemiBold().FontColor(LowColor);
-                        findingCol.Item().Text(finding.Remediation).FontSize(9);
+                        findingCol.Item().Text("Remediation:").FontSize(9).SemiBold()
+                            .FontColor(PdfReportComponents.SuccessColor);
+                        findingCol.Item().Text(finding.Remediation).FontSize(9)
+                            .FontColor(PdfReportComponents.TextColor);
                     }
 
                     if (finding.AffectedResources.Any())
                     {
                         findingCol.Item().PaddingTop(5);
-                        findingCol.Item().Text($"Affected Resources: {finding.AffectedResources.Count}").FontSize(8).FontColor("#6B7280");
+                        findingCol.Item().Text($"Affected Resources: {finding.AffectedResources.Count}").FontSize(8)
+                            .FontColor(PdfReportComponents.LightTextColor);
                     }
                 });
 
@@ -472,22 +348,7 @@ public class ReportService : IReportService
 
     private void ComposeFooter(IContainer container)
     {
-        container.Column(column =>
-        {
-            column.Item().LineHorizontal(1).LineColor("#E5E7EB");
-            column.Item().PaddingTop(5).Row(row =>
-            {
-                row.RelativeItem().Text($"Generated by Cloudativ Assessment Tool on {DateTime.UtcNow:yyyy-MM-dd HH:mm} UTC")
-                    .FontSize(8).FontColor("#9CA3AF");
-                row.RelativeItem().AlignRight().Text(text =>
-                {
-                    text.Span("Page ").FontSize(8).FontColor("#9CA3AF");
-                    text.CurrentPageNumber().FontSize(8).FontColor("#9CA3AF");
-                    text.Span(" of ").FontSize(8).FontColor("#9CA3AF");
-                    text.TotalPages().FontSize(8).FontColor("#9CA3AF");
-                });
-            });
-        });
+        PdfReportComponents.ComposeFooter(container);
     }
 
     public async Task<byte[]> GenerateExcelReportAsync(Guid assessmentRunId, CancellationToken cancellationToken = default)
@@ -853,6 +714,14 @@ public class ReportService : IReportService
         _ => "#6B7280"
     };
 
+    private static string GetScoreBarColor(int score) => score switch
+    {
+        >= 90 => PdfReportComponents.SuccessColor,
+        >= 70 => PdfReportComponents.WarningColor,
+        >= 50 => HighColor,
+        _ => PdfReportComponents.DangerColor
+    };
+
     #region Domain-Specific Export Methods
 
     public async Task<byte[]> GenerateDomainPdfReportAsync(Guid assessmentRunId, AssessmentDomain domain, CancellationToken cancellationToken = default)
@@ -890,36 +759,31 @@ public class ReportService : IReportService
     {
         container.Column(column =>
         {
-            column.Item().Row(row =>
+            // Accent bar
+            column.Item().Height(4).Background(PdfReportComponents.SecondaryColor);
+
+            column.Item().PaddingTop(8).PaddingBottom(8).Row(row =>
             {
                 row.RelativeItem().Column(col =>
                 {
-                    col.Item().Text("Cloudativ").FontSize(24).Bold().FontColor(PrimaryColor);
-                    col.Item().Text($"{domainDetail.DisplayName} Report").FontSize(14).FontColor(PrimaryColor);
+                    col.Item().Text($"Cloudativ — {domainDetail.DisplayName}").FontSize(20).Bold()
+                        .FontColor(PdfReportComponents.SecondaryColor);
+                    col.Item().PaddingTop(2).Text(tenantName).FontSize(11)
+                        .FontColor(PdfReportComponents.LightTextColor);
                 });
-
-                row.ConstantItem(100).Column(col =>
+                row.ConstantItem(120).Column(col =>
                 {
-                    col.Item().AlignRight().Text($"Score: {domainDetail.Score.Score}%")
-                        .FontSize(20).Bold().FontColor(GetScoreColor(domainDetail.Score.Score));
-                    col.Item().AlignRight().Text($"Grade {domainDetail.Score.Grade}")
-                        .FontSize(14).FontColor(PrimaryColor);
+                    col.Item().AlignRight().Text($"{domainDetail.Score.Score}%").FontSize(28).Bold()
+                        .FontColor(GetScoreColor(domainDetail.Score.Score));
+                    col.Item().AlignRight().Text($"Grade {domainDetail.Score.Grade}").FontSize(12)
+                        .FontColor(PdfReportComponents.SecondaryColor);
+                    col.Item().AlignRight().PaddingTop(2)
+                        .Text($"{assessmentDate:yyyy-MM-dd HH:mm}").FontSize(8)
+                        .FontColor(PdfReportComponents.LightTextColor);
                 });
             });
 
-            column.Item().PaddingVertical(10).LineHorizontal(2).LineColor(PrimaryColor);
-
-            column.Item().Row(row =>
-            {
-                row.RelativeItem().Column(col =>
-                {
-                    col.Item().Text($"Tenant: {tenantName}").FontSize(11).SemiBold();
-                    col.Item().Text($"Assessment Date: {assessmentDate:MMMM dd, yyyy HH:mm}").FontSize(9);
-                });
-                row.RelativeItem().AlignRight().Text(domainDetail.Description).FontSize(9).FontColor("#6B7280");
-            });
-
-            column.Item().PaddingTop(15);
+            column.Item().LineHorizontal(1).LineColor(PdfReportComponents.BorderColor);
         });
     }
 
@@ -927,96 +791,69 @@ public class ReportService : IReportService
     {
         container.Column(column =>
         {
-            // Domain Summary
+            // Domain Summary with stat cards + charts
             column.Item().Element(c => ComposeDomainSummary(c, domainDetail));
 
-            column.Item().PaddingVertical(15);
+            column.Item().PaddingVertical(12);
 
             // Metrics Section
             if (domainDetail.Metrics.Any())
             {
                 column.Item().Element(c => ComposeDomainMetrics(c, domainDetail.Metrics));
-                column.Item().PaddingVertical(15);
+                column.Item().PaddingVertical(12);
             }
 
             // Recommendations
             if (domainDetail.Recommendations.Any())
             {
                 column.Item().Element(c => ComposeDomainRecommendations(c, domainDetail.Recommendations));
-                column.Item().PaddingVertical(15);
+                column.Item().PaddingVertical(12);
             }
 
-            // Findings
+            // Findings with branded cards
             column.Item().Element(c => ComposeDomainFindings(c, domainDetail.Findings));
         });
     }
 
     private void ComposeDomainSummary(IContainer container, DomainDetailDto domainDetail)
     {
+        var score = domainDetail.Score;
+        var totalChecks = score.PassedChecks + score.FailedChecks;
+        var passPct = totalChecks > 0 ? score.PassedChecks * 100 / totalChecks : 0;
+
         container.Column(column =>
         {
-            column.Item().Text("Domain Summary").FontSize(16).Bold().FontColor(PrimaryColor);
+            column.Item().Element(c => PdfReportComponents.SectionTitle(c, "Domain Summary"));
             column.Item().PaddingTop(10);
 
-            column.Item().Border(1).BorderColor("#E5E7EB").Padding(15).Column(summaryCol =>
+            // Stat cards
+            column.Item().Element(c => PdfReportComponents.ComposeStatCards(c, new List<StatCardData>
             {
-                summaryCol.Item().Row(row =>
+                new("Domain Score", $"{score.Score}%", $"Grade {score.Grade}", GetScoreColor(score.Score)),
+                new("Total Findings", $"{domainDetail.Findings.Count}",
+                    $"{score.CriticalCount + score.HighCount} Critical/High",
+                    score.CriticalCount + score.HighCount > 0 ? PdfReportComponents.DangerColor : null),
+                new("Passed Checks", $"{score.PassedChecks}", $"{passPct}% pass rate", PdfReportComponents.SuccessColor),
+                new("Failed Checks", $"{score.FailedChecks}", null, score.FailedChecks > 0 ? PdfReportComponents.DangerColor : null)
+            }));
+
+            column.Item().PaddingTop(12);
+
+            // Charts: Severity Breakdown donut + Compliance Status donut
+            column.Item().Element(c => PdfReportComponents.ChartRow(c,
+                left => PdfChartHelper.DonutChart(left, new List<ChartSegment>
                 {
-                    row.RelativeItem().Column(col =>
-                    {
-                        col.Item().Text("Domain Score").FontSize(10).FontColor("#6B7280");
-                        col.Item().Text($"{domainDetail.Score.Score}%").FontSize(28).Bold()
-                            .FontColor(GetScoreColor(domainDetail.Score.Score));
-                    });
-
-                    row.RelativeItem().Column(col =>
-                    {
-                        col.Item().Text("Total Findings").FontSize(10).FontColor("#6B7280");
-                        col.Item().Text($"{domainDetail.Findings.Count}").FontSize(28).Bold().FontColor(PrimaryColor);
-                    });
-
-                    row.RelativeItem().Column(col =>
-                    {
-                        col.Item().Text("Passed Checks").FontSize(10).FontColor("#6B7280");
-                        col.Item().Text($"{domainDetail.Score.PassedChecks}").FontSize(28).Bold().FontColor(LowColor);
-                    });
-
-                    row.RelativeItem().Column(col =>
-                    {
-                        col.Item().Text("Failed Checks").FontSize(10).FontColor("#6B7280");
-                        col.Item().Text($"{domainDetail.Score.FailedChecks}").FontSize(28).Bold().FontColor(CriticalColor);
-                    });
-                });
-
-                summaryCol.Item().PaddingTop(15);
-
-                summaryCol.Item().Row(row =>
+                    new("Critical", score.CriticalCount, CriticalColor),
+                    new("High", score.HighCount, HighColor),
+                    new("Medium", score.MediumCount, MediumColor),
+                    new("Low", score.LowCount, LowColor)
+                }, "Findings", $"{domainDetail.Findings.Count}", "Findings by Severity"),
+                right => PdfChartHelper.DonutChart(right, new List<ChartSegment>
                 {
-                    row.RelativeItem().Background(CriticalColor).Padding(8).Column(col =>
-                    {
-                        col.Item().Text("Critical").FontSize(9).FontColor("#FFFFFF");
-                        col.Item().Text($"{domainDetail.Score.CriticalCount}").FontSize(18).Bold().FontColor("#FFFFFF");
-                    });
-                    row.ConstantItem(5);
-                    row.RelativeItem().Background(HighColor).Padding(8).Column(col =>
-                    {
-                        col.Item().Text("High").FontSize(9).FontColor("#FFFFFF");
-                        col.Item().Text($"{domainDetail.Score.HighCount}").FontSize(18).Bold().FontColor("#FFFFFF");
-                    });
-                    row.ConstantItem(5);
-                    row.RelativeItem().Background(MediumColor).Padding(8).Column(col =>
-                    {
-                        col.Item().Text("Medium").FontSize(9).FontColor("#FFFFFF");
-                        col.Item().Text($"{domainDetail.Score.MediumCount}").FontSize(18).Bold().FontColor("#FFFFFF");
-                    });
-                    row.ConstantItem(5);
-                    row.RelativeItem().Background(LowColor).Padding(8).Column(col =>
-                    {
-                        col.Item().Text("Low").FontSize(9).FontColor("#FFFFFF");
-                        col.Item().Text($"{domainDetail.Score.LowCount}").FontSize(18).Bold().FontColor("#FFFFFF");
-                    });
-                });
-            });
+                    new("Passed", score.PassedChecks, PdfReportComponents.SuccessColor),
+                    new("Failed", score.FailedChecks, PdfReportComponents.DangerColor)
+                }, "Checks", $"{passPct}%", "Compliance Checks")
+            ));
         });
     }
 
@@ -1024,21 +861,19 @@ public class ReportService : IReportService
     {
         container.Column(column =>
         {
-            column.Item().Text("Key Metrics").FontSize(16).Bold().FontColor(PrimaryColor);
+            column.Item().Element(c => PdfReportComponents.SectionTitle(c, "Key Metrics"));
             column.Item().PaddingTop(10);
 
-            column.Item().Border(1).BorderColor("#E5E7EB").Padding(15).Row(row =>
+            // Display metrics in rows of 4 stat cards
+            var metricList = metrics.Take(8).ToList();
+            for (int i = 0; i < metricList.Count; i += 4)
             {
-                var metricList = metrics.Take(8).ToList();
-                foreach (var metric in metricList)
-                {
-                    row.RelativeItem().Padding(5).Column(col =>
-                    {
-                        col.Item().Text(FormatMetricName(metric.Key)).FontSize(8).FontColor("#6B7280");
-                        col.Item().Text(metric.Value?.ToString() ?? "N/A").FontSize(14).Bold().FontColor(PrimaryColor);
-                    });
-                }
-            });
+                if (i > 0) column.Item().PaddingTop(8);
+                var batch = metricList.Skip(i).Take(4)
+                    .Select(m => new StatCardData(FormatMetricName(m.Key), m.Value?.ToString() ?? "N/A"))
+                    .ToList();
+                column.Item().Element(c => PdfReportComponents.ComposeStatCards(c, batch));
+            }
         });
     }
 
@@ -1046,17 +881,19 @@ public class ReportService : IReportService
     {
         container.Column(column =>
         {
-            column.Item().Text("Recommendations").FontSize(16).Bold().FontColor(PrimaryColor);
+            column.Item().Element(c => PdfReportComponents.SectionTitle(c, "Recommendations"));
             column.Item().PaddingTop(10);
 
-            column.Item().Border(1).BorderColor(AccentColor).Background("#FEFFFE").Padding(15).Column(recCol =>
+            column.Item().Border(1).BorderColor(PdfReportComponents.BorderColor).Background("#FAFFFE").Padding(15).Column(recCol =>
             {
-                foreach (var rec in recommendations.Take(5))
+                foreach (var rec in recommendations.Take(8))
                 {
                     recCol.Item().PaddingBottom(5).Row(row =>
                     {
-                        row.ConstantItem(15).AlignMiddle().Text("•").FontSize(12).FontColor(PrimaryColor);
-                        row.RelativeItem().Text(rec).FontSize(10);
+                        row.ConstantItem(15).AlignMiddle().Text("•").FontSize(12)
+                            .FontColor(PdfReportComponents.SuccessColor);
+                        row.RelativeItem().Text(rec).FontSize(10)
+                            .FontColor(PdfReportComponents.TextColor);
                     });
                 }
             });
@@ -1072,64 +909,73 @@ public class ReportService : IReportService
 
         container.Column(column =>
         {
-            column.Item().Text("Detailed Findings").FontSize(16).Bold().FontColor(PrimaryColor);
+            column.Item().Element(c => PdfReportComponents.SectionTitle(c, "Detailed Findings"));
             column.Item().PaddingTop(10);
 
             if (!sortedFindings.Any())
             {
-                column.Item().Border(1).BorderColor("#E5E7EB").Padding(15).Text("No findings for this domain.")
-                    .FontSize(10).FontColor("#6B7280");
+                column.Item().Border(1).BorderColor(PdfReportComponents.BorderColor).Padding(15)
+                    .Text("No findings for this domain.").FontSize(10)
+                    .FontColor(PdfReportComponents.LightTextColor);
                 return;
             }
 
             foreach (var finding in sortedFindings)
             {
-                column.Item().Border(1).BorderColor("#E5E7EB").Padding(10).Column(findingCol =>
+                column.Item().Border(1).BorderColor(PdfReportComponents.BorderColor).Padding(10).Column(findingCol =>
                 {
                     findingCol.Item().Row(row =>
                     {
-                        row.ConstantItem(70).Background(GetSeverityColor(finding.Severity)).Padding(3)
-                            .AlignCenter().Text(finding.Severity.ToString()).FontSize(8).FontColor("#FFFFFF").SemiBold();
+                        row.ConstantItem(70).Element(c => PdfReportComponents.StatusBadge(c, finding.Severity.ToString()));
                         row.ConstantItem(5);
-                        row.RelativeItem().Text(finding.Title).FontSize(11).SemiBold();
+                        row.RelativeItem().Text(finding.Title).FontSize(11).SemiBold()
+                            .FontColor(PdfReportComponents.TextColor);
                     });
 
                     if (!string.IsNullOrEmpty(finding.Category))
                     {
                         findingCol.Item().PaddingTop(3);
-                        findingCol.Item().Text($"Category: {finding.Category}").FontSize(8).FontColor("#6B7280");
+                        findingCol.Item().Text($"Category: {finding.Category}").FontSize(8)
+                            .FontColor(PdfReportComponents.LightTextColor);
                     }
 
                     findingCol.Item().PaddingTop(3);
                     findingCol.Item().Row(row =>
                     {
-                        row.ConstantItem(60).Text("Status:").FontSize(8).FontColor("#6B7280");
-                        row.RelativeItem().Text(finding.IsCompliant ? "Compliant" : "Non-Compliant")
-                            .FontSize(8).FontColor(finding.IsCompliant ? LowColor : CriticalColor);
+                        row.ConstantItem(60).Text("Status:").FontSize(8)
+                            .FontColor(PdfReportComponents.LightTextColor);
+                        row.RelativeItem().Element(c => PdfReportComponents.StatusBadge(c,
+                            finding.IsCompliant ? "Compliant" : "Non-Compliant"));
                     });
 
                     if (!string.IsNullOrEmpty(finding.Description))
                     {
                         findingCol.Item().PaddingTop(5);
-                        findingCol.Item().Text("Description:").FontSize(9).SemiBold();
-                        findingCol.Item().Text(finding.Description).FontSize(9);
+                        findingCol.Item().Text("Description:").FontSize(9).SemiBold()
+                            .FontColor(PdfReportComponents.TextColor);
+                        findingCol.Item().Text(finding.Description).FontSize(9)
+                            .FontColor(PdfReportComponents.TextColor);
                     }
 
                     if (!string.IsNullOrEmpty(finding.Remediation))
                     {
                         findingCol.Item().PaddingTop(5);
-                        findingCol.Item().Text("Remediation:").FontSize(9).SemiBold().FontColor(LowColor);
-                        findingCol.Item().Text(finding.Remediation).FontSize(9);
+                        findingCol.Item().Text("Remediation:").FontSize(9).SemiBold()
+                            .FontColor(PdfReportComponents.SuccessColor);
+                        findingCol.Item().Text(finding.Remediation).FontSize(9)
+                            .FontColor(PdfReportComponents.TextColor);
                     }
 
                     if (finding.AffectedResources.Any())
                     {
                         findingCol.Item().PaddingTop(5);
-                        findingCol.Item().Text($"Affected Resources ({finding.AffectedResources.Count}):").FontSize(8).FontColor("#6B7280");
+                        findingCol.Item().Text($"Affected Resources ({finding.AffectedResources.Count}):").FontSize(8)
+                            .FontColor(PdfReportComponents.LightTextColor);
                         var resources = string.Join(", ", finding.AffectedResources.Take(5));
                         if (finding.AffectedResources.Count > 5)
                             resources += $" ... and {finding.AffectedResources.Count - 5} more";
-                        findingCol.Item().Text(resources).FontSize(8).FontColor("#6B7280");
+                        findingCol.Item().Text(resources).FontSize(8)
+                            .FontColor(PdfReportComponents.LightTextColor);
                     }
                 });
 
@@ -1140,22 +986,7 @@ public class ReportService : IReportService
 
     private void ComposeDomainFooter(IContainer container)
     {
-        container.Column(column =>
-        {
-            column.Item().LineHorizontal(1).LineColor("#E5E7EB");
-            column.Item().PaddingTop(5).Row(row =>
-            {
-                row.RelativeItem().Text($"Generated by Cloudativ Assessment Tool on {DateTime.UtcNow:yyyy-MM-dd HH:mm} UTC")
-                    .FontSize(8).FontColor("#9CA3AF");
-                row.RelativeItem().AlignRight().Text(text =>
-                {
-                    text.Span("Page ").FontSize(8).FontColor("#9CA3AF");
-                    text.CurrentPageNumber().FontSize(8).FontColor("#9CA3AF");
-                    text.Span(" of ").FontSize(8).FontColor("#9CA3AF");
-                    text.TotalPages().FontSize(8).FontColor("#9CA3AF");
-                });
-            });
-        });
+        PdfReportComponents.ComposeFooter(container);
     }
 
     public async Task<byte[]> GenerateDomainExcelReportAsync(Guid assessmentRunId, AssessmentDomain domain, CancellationToken cancellationToken = default)

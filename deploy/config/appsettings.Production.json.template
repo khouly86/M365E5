@@ -1,0 +1,35 @@
+{
+  "ConnectionStrings": {
+    "DefaultConnection": "Data Source=C:/ProgramData/Cloudativ Assessment/data/cloudativ_assessment.db"
+  },
+  "Database": {
+    "Provider": "SQLite"
+  },
+  "Serilog": {
+    "LogPath": "C:/ProgramData/Cloudativ Assessment/logs/cloudativ-.log"
+  },
+  "OpenAI": {
+    "Enabled": false,
+    "ApiKey": "",
+    "Model": "gpt-4o-mini",
+    "MaxTokens": 16384
+  },
+  "Stripe": {
+    "SecretKey": "",
+    "PublishableKey": "",
+    "WebhookSecret": "",
+    "MonthlyPriceId": "",
+    "YearlyPriceId": ""
+  },
+  "Kestrel": {
+    "Endpoints": {
+      "Https": {
+        "Url": "https://*:5443",
+        "Certificate": {
+          "Path": "C:/ProgramData/Cloudativ Assessment/certs/cloudativ-assessment.pfx",
+          "Password": "CHANGE_ME"
+        }
+      }
+    }
+  }
+}

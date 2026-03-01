@@ -1,0 +1,34 @@
+version: '3.8'
+
+# PostgreSQL deployment: docker compose -f docker-compose.yml -f docker-compose.postgres.yml up -d
+
+services:
+  cloudativ-assessment:
+    environment:
+      - ConnectionStrings__DefaultConnection=Host=postgres;Database=cloudativ;Username=cloudativ;Password=${POSTGRES_PASSWORD:-CloudativSecure123!}
+      - Database__Provider=PostgreSQL
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: cloudativ-postgres
+    environment:
+      - POSTGRES_USER=cloudativ
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-CloudativSecure123!}
+      - POSTGRES_DB=cloudativ
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - cloudativ-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cloudativ -d cloudativ"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+    driver: local

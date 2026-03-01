@@ -120,8 +120,10 @@ public static class DependencyInjection
         return services;
     }
 
-    public static IServiceCollection AddSerilogLogging(this IServiceCollection services)
+    public static IServiceCollection AddSerilogLogging(this IServiceCollection services, IConfiguration? configuration = null)
     {
+        var logPath = configuration?.GetValue<string>("Serilog:LogPath") ?? "logs/cloudativ-.log";
+
         Log.Logger = new LoggerConfiguration()
             .MinimumLevel.Information()
             .MinimumLevel.Override("Microsoft", Serilog.Events.LogEventLevel.Warning)
@@ -130,7 +132,7 @@ public static class DependencyInjection
             .WriteTo.Console(
                 outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}")
             .WriteTo.File(
-                path: "logs/cloudativ-.log",
+                path: logPath,
                 rollingInterval: RollingInterval.Day,
                 retainedFileCountLimit: 30,
                 outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {Message:lj}{NewLine}{Exception}")

@@ -3,6 +3,7 @@ using Cloudativ.Assessment.Application.DTOs;
 using Cloudativ.Assessment.Application.Interfaces;
 using Cloudativ.Assessment.Domain.Enums;
 using Cloudativ.Assessment.Domain.Interfaces;
+using Cloudativ.Assessment.Infrastructure.Services.Export;
 using Microsoft.Extensions.Logging;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
@@ -145,71 +146,156 @@ public class GovernanceExportService : IGovernanceExportService
     {
         container.Column(column =>
         {
-            column.Item().Row(row =>
+            // Branded accent bar
+            column.Item().Height(4).Background(PdfReportComponents.SecondaryColor);
+
+            column.Item().PaddingTop(8).PaddingBottom(8).Row(row =>
             {
                 row.RelativeItem().Column(col =>
                 {
-                    col.Item().Text("Cloudativ Assessment")
-                        .FontSize(24).Bold().FontColor(SecondaryColor);
                     col.Item().Text("Governance Compliance Report")
-                        .FontSize(14).FontColor(SecondaryColor);
+                        .FontSize(20).Bold().FontColor(PdfReportComponents.SecondaryColor);
+                    col.Item().PaddingTop(2).Text(tenantName)
+                        .FontSize(11).FontColor(PdfReportComponents.LightTextColor);
                 });
-
-                row.ConstantItem(150).AlignRight().Column(col =>
+                row.ConstantItem(180).Column(col =>
                 {
-                    col.Item().Text($"Tenant: {tenantName}").FontSize(10);
-                    col.Item().Text($"Generated: {DateTime.Now:MMM dd, yyyy HH:mm}").FontSize(10);
+                    col.Item().AlignRight().Text($"Generated: {DateTime.UtcNow:yyyy-MM-dd HH:mm} UTC")
+                        .FontSize(8).FontColor(PdfReportComponents.LightTextColor);
+                    if (summary != null)
+                    {
+                        col.Item().AlignRight().PaddingTop(2)
+                            .Text($"Standards: {summary.StandardsAnalyzed}")
+                            .FontSize(10).Bold().FontColor(PdfReportComponents.SecondaryColor);
+                    }
                 });
             });
 
-            column.Item().PaddingVertical(10).LineHorizontal(2).LineColor(PrimaryColor);
+            column.Item().LineHorizontal(1).LineColor(PdfReportComponents.BorderColor);
 
+            // Stat cards
             if (summary != null)
             {
-                column.Item().PaddingTop(10).Row(row =>
-                {
-                    row.RelativeItem().Border(1).BorderColor(Colors.Grey.Lighten2).Padding(10).Column(col =>
+                column.Item().PaddingTop(10).Element(c =>
+                    PdfReportComponents.ComposeStatCards(c, new List<StatCardData>
                     {
-                        col.Item().Text("Overall Score").FontSize(9).FontColor(Colors.Grey.Darken1);
-                        col.Item().Text($"{summary.OverallAverageScore}%").FontSize(24).Bold()
-                            .FontColor(GetScoreColor(summary.OverallAverageScore));
-                    });
-
-                    row.ConstantItem(10);
-
-                    row.RelativeItem().Border(1).BorderColor(Colors.Grey.Lighten2).Padding(10).Column(col =>
-                    {
-                        col.Item().Text("Standards Analyzed").FontSize(9).FontColor(Colors.Grey.Darken1);
-                        col.Item().Text($"{summary.StandardsAnalyzed}").FontSize(24).Bold().FontColor(SecondaryColor);
-                    });
-
-                    row.ConstantItem(10);
-
-                    row.RelativeItem().Border(1).BorderColor(Colors.Grey.Lighten2).Padding(10).Column(col =>
-                    {
-                        col.Item().Text("Compliance Gaps").FontSize(9).FontColor(Colors.Grey.Darken1);
-                        col.Item().Text($"{summary.TotalGaps}").FontSize(24).Bold().FontColor(AccentColor);
-                    });
-
-                    row.ConstantItem(10);
-
-                    row.RelativeItem().Border(1).BorderColor(Colors.Grey.Lighten2).Padding(10).Column(col =>
-                    {
-                        col.Item().Text("Recommendations").FontSize(9).FontColor(Colors.Grey.Darken1);
-                        col.Item().Text($"{summary.TotalRecommendations}").FontSize(24).Bold().FontColor(Colors.Blue.Darken2);
-                    });
-                });
+                        new("Overall Score", $"{summary.OverallAverageScore}%", "Average across standards",
+                            GetScoreColor(summary.OverallAverageScore)),
+                        new("Standards Analyzed", $"{summary.StandardsAnalyzed}", null,
+                            PdfReportComponents.SecondaryColor),
+                        new("Compliance Gaps", $"{summary.TotalGaps}", "Across all standards",
+                            summary.TotalGaps > 0 ? PdfReportComponents.DangerColor : PdfReportComponents.SuccessColor),
+                        new("Recommendations", $"{summary.TotalRecommendations}", "Remediation actions",
+                            PdfReportComponents.InfoColor)
+                    }));
             }
 
-            column.Item().PaddingVertical(15);
+            column.Item().PaddingVertical(10);
         });
     }
 
     private void ComposeContent(IContainer container, List<GovernanceAnalysisDto> analyses, GovernanceAnalysisSummaryDto? summary)
     {
+        var successful = analyses.Where(a => a.IsSuccessful).ToList();
+
         container.Column(column =>
         {
-            foreach (var analysis in analyses.Where(a => a.IsSuccessful))
+            // --- Executive Summary Charts ---
+            if (successful.Count > 0)
+            {
+                column.Item().Element(c => PdfReportComponents.SectionTitle(c, "Executive Summary"));
+                column.Item().PaddingTop(10);
+
+                // Row 1: Control Status donut + Gap Severity donut
+                var totalCompliant = successful.Sum(a => a.CompliantControls);
+                var totalPartial = successful.Sum(a => a.PartiallyCompliantControls);
+                var totalNonCompliant = successful.Sum(a => a.NonCompliantControls);
+                var totalControls = totalCompliant + totalPartial + totalNonCompliant;
+
+                var allGaps = successful.SelectMany(a => a.ComplianceGaps ?? new()).ToList();
+                var criticalGaps = allGaps.Count(g => string.Equals(g.Severity, "Critical", StringComparison.OrdinalIgnoreCase));
+                var highGaps = allGaps.Count(g => string.Equals(g.Severity, "High", StringComparison.OrdinalIgnoreCase));
+                var mediumGaps = allGaps.Count(g => string.Equals(g.Severity, "Medium", StringComparison.OrdinalIgnoreCase));
+                var lowGaps = allGaps.Count(g => string.Equals(g.Severity, "Low", StringComparison.OrdinalIgnoreCase));
+
+                column.Item().Element(c => PdfReportComponents.ChartRow(c,
+                    left => PdfChartHelper.DonutChart(left, new List<ChartSegment>
+                    {
+                        new("Compliant", totalCompliant, PdfReportComponents.SuccessColor),
+                        new("Partial", totalPartial, PdfReportComponents.WarningColor),
+                        new("Non-Compliant", totalNonCompliant, PdfReportComponents.DangerColor)
+                    }, "Controls", $"{totalControls}", "Control Compliance Status"),
+
+                    right => PdfChartHelper.DonutChart(right, new List<ChartSegment>
+                    {
+                        new("Critical", criticalGaps, "#DC2626"),
+                        new("High", highGaps, "#EF7348"),
+                        new("Medium", mediumGaps, "#CA8A04"),
+                        new("Low", lowGaps, "#0078D4")
+                    }, "Gaps", $"{allGaps.Count}", "Gaps by Severity")
+                ));
+
+                column.Item().PaddingTop(12);
+
+                // Row 2: Recommendation Priority donut + Standards Score bar chart
+                var allRecs = successful.SelectMany(a => a.Recommendations ?? new()).ToList();
+                var criticalRecs = allRecs.Count(r => string.Equals(r.Priority, "Critical", StringComparison.OrdinalIgnoreCase));
+                var highRecs = allRecs.Count(r => string.Equals(r.Priority, "High", StringComparison.OrdinalIgnoreCase));
+                var mediumRecs = allRecs.Count(r => string.Equals(r.Priority, "Medium", StringComparison.OrdinalIgnoreCase));
+                var lowRecs = allRecs.Count(r => string.Equals(r.Priority, "Low", StringComparison.OrdinalIgnoreCase));
+
+                column.Item().Element(c => PdfReportComponents.ChartRow(c,
+                    left => PdfChartHelper.DonutChart(left, new List<ChartSegment>
+                    {
+                        new("Critical", criticalRecs, "#DC2626"),
+                        new("High", highRecs, "#EF7348"),
+                        new("Medium", mediumRecs, "#CA8A04"),
+                        new("Low", lowRecs, "#0078D4")
+                    }, "Total", $"{allRecs.Count}", "Recommendations by Priority"),
+
+                    right => PdfChartHelper.HorizontalBarChart(right,
+                        successful.Select((a, i) => new BarChartItem(
+                            a.StandardDisplayName,
+                            a.ComplianceScore,
+                            GetScoreBarColor(a.ComplianceScore)
+                        )).ToList(),
+                        "Compliance Scores by Standard", 10)
+                ));
+
+                column.Item().PaddingTop(12);
+
+                // Row 3: Effort Distribution donut + Gaps per Standard bar chart
+                var quickWin = allRecs.Count(r => string.Equals(r.EstimatedEffort, "Quick Win", StringComparison.OrdinalIgnoreCase));
+                var shortTerm = allRecs.Count(r => string.Equals(r.EstimatedEffort, "Short Term", StringComparison.OrdinalIgnoreCase));
+                var longTerm = allRecs.Count(r => string.Equals(r.EstimatedEffort, "Long Term", StringComparison.OrdinalIgnoreCase));
+                var otherEffort = allRecs.Count - quickWin - shortTerm - longTerm;
+
+                var effortSegments = new List<ChartSegment>();
+                if (quickWin > 0) effortSegments.Add(new("Quick Win", quickWin, PdfReportComponents.SuccessColor));
+                if (shortTerm > 0) effortSegments.Add(new("Short Term", shortTerm, PdfReportComponents.InfoColor));
+                if (longTerm > 0) effortSegments.Add(new("Long Term", longTerm, PdfReportComponents.WarningColor));
+                if (otherEffort > 0) effortSegments.Add(new("Other", otherEffort, "#9CA3AF"));
+                if (!effortSegments.Any()) effortSegments.Add(new("None", 1, "#E5E7EB"));
+
+                column.Item().Element(c => PdfReportComponents.ChartRow(c,
+                    left => PdfChartHelper.DonutChart(left, effortSegments,
+                        "Actions", $"{allRecs.Count}", "Effort Distribution"),
+
+                    right => PdfChartHelper.HorizontalBarChart(right,
+                        successful.Where(a => (a.ComplianceGaps?.Count ?? 0) > 0)
+                            .Select(a => new BarChartItem(
+                                a.StandardDisplayName,
+                                a.ComplianceGaps!.Count,
+                                PdfReportComponents.DangerColor
+                            )).ToList(),
+                        "Gaps per Standard", 10)
+                ));
+
+                column.Item().PaddingTop(15);
+            }
+
+            // --- Per-Standard Detail Sections ---
+            foreach (var analysis in successful)
             {
                 column.Item().Element(c => ComposeAnalysisSection(c, analysis));
                 column.Item().PaddingVertical(10);
@@ -221,120 +307,116 @@ public class GovernanceExportService : IGovernanceExportService
     {
         container.Column(column =>
         {
-            // Standard header
-            column.Item().Background(SecondaryColor).Padding(10).Row(row =>
+            // Standard header bar
+            column.Item().Background(PdfReportComponents.SecondaryColor).Padding(10).Row(row =>
             {
                 row.RelativeItem().Text(analysis.StandardDisplayName)
-                    .FontSize(14).Bold().FontColor(Colors.White);
-                row.ConstantItem(80).AlignRight().Text($"Score: {analysis.ComplianceScore}%")
-                    .FontSize(14).Bold().FontColor(PrimaryColor);
+                    .FontSize(14).Bold().FontColor("#FFFFFF");
+                row.ConstantItem(100).AlignRight().Text($"Score: {analysis.ComplianceScore}%")
+                    .FontSize(14).Bold().FontColor(PdfReportComponents.PrimaryColor);
             });
 
-            // Control counts
-            column.Item().Background(Colors.Grey.Lighten4).Padding(8).Row(row =>
+            // Control status stat cards
+            column.Item().PaddingTop(8).Element(c =>
+                PdfReportComponents.ComposeStatCards(c, new List<StatCardData>
+                {
+                    new("Total Controls", $"{analysis.TotalControls}", null, PdfReportComponents.SecondaryColor),
+                    new("Compliant", $"{analysis.CompliantControls}", null, PdfReportComponents.SuccessColor),
+                    new("Partial", $"{analysis.PartiallyCompliantControls}", null, PdfReportComponents.WarningColor),
+                    new("Non-Compliant", $"{analysis.NonCompliantControls}", null, PdfReportComponents.DangerColor)
+                }));
+
+            // Charts row: Control Status donut + Gap Severity donut
+            column.Item().PaddingTop(10).Element(c =>
             {
-                row.RelativeItem().Text($"Total Controls: {analysis.TotalControls}").FontSize(9);
-                row.RelativeItem().Text($"Compliant: {analysis.CompliantControls}").FontSize(9).FontColor(Colors.Green.Darken2);
-                row.RelativeItem().Text($"Partial: {analysis.PartiallyCompliantControls}").FontSize(9).FontColor(Colors.Orange.Darken2);
-                row.RelativeItem().Text($"Non-Compliant: {analysis.NonCompliantControls}").FontSize(9).FontColor(Colors.Red.Darken2);
+                var controlSegments = new List<ChartSegment>
+                {
+                    new("Compliant", analysis.CompliantControls, PdfReportComponents.SuccessColor),
+                    new("Partial", analysis.PartiallyCompliantControls, PdfReportComponents.WarningColor),
+                    new("Non-Compliant", analysis.NonCompliantControls, PdfReportComponents.DangerColor)
+                };
+
+                var gapSeveritySegments = new List<ChartSegment>();
+                if (analysis.ComplianceGaps?.Any() == true)
+                {
+                    var crit = analysis.ComplianceGaps.Count(g => string.Equals(g.Severity, "Critical", StringComparison.OrdinalIgnoreCase));
+                    var high = analysis.ComplianceGaps.Count(g => string.Equals(g.Severity, "High", StringComparison.OrdinalIgnoreCase));
+                    var med = analysis.ComplianceGaps.Count(g => string.Equals(g.Severity, "Medium", StringComparison.OrdinalIgnoreCase));
+                    var low = analysis.ComplianceGaps.Count(g => string.Equals(g.Severity, "Low", StringComparison.OrdinalIgnoreCase));
+                    if (crit > 0) gapSeveritySegments.Add(new("Critical", crit, "#DC2626"));
+                    if (high > 0) gapSeveritySegments.Add(new("High", high, "#EF7348"));
+                    if (med > 0) gapSeveritySegments.Add(new("Medium", med, "#CA8A04"));
+                    if (low > 0) gapSeveritySegments.Add(new("Low", low, "#0078D4"));
+                }
+                if (!gapSeveritySegments.Any())
+                    gapSeveritySegments.Add(new("No Gaps", 1, PdfReportComponents.SuccessColor));
+
+                PdfReportComponents.ChartRow(c,
+                    left => PdfChartHelper.DonutChart(left, controlSegments,
+                        "Controls", $"{analysis.TotalControls}", "Control Status"),
+                    right => PdfChartHelper.DonutChart(right, gapSeveritySegments,
+                        "Gaps", $"{analysis.ComplianceGaps?.Count ?? 0}", "Gap Severity"));
             });
 
-            // Gaps
+            column.Item().PaddingTop(10);
+
+            // Gaps table
             if (analysis.ComplianceGaps?.Any() == true)
             {
-                column.Item().PaddingTop(10).Text($"Compliance Gaps ({analysis.ComplianceGaps.Count})").FontSize(11).Bold().FontColor(AccentColor);
-                column.Item().Table(table =>
-                {
-                    table.ColumnsDefinition(cols =>
-                    {
-                        cols.ConstantColumn(80);
-                        cols.RelativeColumn(2);
-                        cols.RelativeColumn(3);
-                        cols.ConstantColumn(60);
-                    });
-
-                    table.Header(header =>
-                    {
-                        header.Cell().Background(Colors.Grey.Lighten3).Padding(5).Text("Control ID").FontSize(8).Bold();
-                        header.Cell().Background(Colors.Grey.Lighten3).Padding(5).Text("Control Name").FontSize(8).Bold();
-                        header.Cell().Background(Colors.Grey.Lighten3).Padding(5).Text("Gap Description").FontSize(8).Bold();
-                        header.Cell().Background(Colors.Grey.Lighten3).Padding(5).Text("Severity").FontSize(8).Bold();
-                    });
-
-                    foreach (var gap in analysis.ComplianceGaps)
-                    {
-                        table.Cell().BorderBottom(1).BorderColor(Colors.Grey.Lighten2).Padding(4)
-                            .Text(gap.ControlId ?? "-").FontSize(8);
-                        table.Cell().BorderBottom(1).BorderColor(Colors.Grey.Lighten2).Padding(4)
-                            .Text(gap.ControlName ?? "-").FontSize(8);
-                        table.Cell().BorderBottom(1).BorderColor(Colors.Grey.Lighten2).Padding(4)
-                            .Text(gap.GapDescription ?? "-").FontSize(8);
-                        table.Cell().BorderBottom(1).BorderColor(Colors.Grey.Lighten2).Padding(4)
-                            .Text(gap.Severity ?? "-").FontSize(8)
-                            .FontColor(GetSeverityColor(gap.Severity));
-                    }
-                });
+                column.Item().Element(c => PdfReportComponents.SectionTitle(c,
+                    $"Compliance Gaps ({analysis.ComplianceGaps.Count})"));
+                column.Item().PaddingTop(5).Element(c =>
+                    PdfReportComponents.ComposeDataTable(c,
+                        new[] { "Control ID", "Control Name", "Gap Description", "Severity" },
+                        analysis.ComplianceGaps.Select(g => new[]
+                        {
+                            g.ControlId ?? "-",
+                            g.ControlName ?? "-",
+                            g.GapDescription ?? "-",
+                            g.Severity ?? "-"
+                        }).ToList(),
+                        new[] { 3 } // Badge column for severity
+                    ));
+                column.Item().PaddingTop(8);
             }
 
-            // Recommendations
+            // Recommendations table
             if (analysis.Recommendations?.Any() == true)
             {
-                column.Item().PaddingTop(10).Text($"Recommendations ({analysis.Recommendations.Count})").FontSize(11).Bold().FontColor(Colors.Blue.Darken2);
-
-                foreach (var rec in analysis.Recommendations)
-                {
-                    column.Item().Border(1).BorderColor(Colors.Grey.Lighten2).Padding(8).Column(recCol =>
-                    {
-                        recCol.Item().Row(row =>
+                column.Item().Element(c => PdfReportComponents.SectionTitle(c,
+                    $"Recommendations ({analysis.Recommendations.Count})"));
+                column.Item().PaddingTop(5).Element(c =>
+                    PdfReportComponents.ComposeDataTable(c,
+                        new[] { "Title", "Priority", "Implementation Guidance", "Effort" },
+                        analysis.Recommendations.Select(r => new[]
                         {
-                            row.RelativeItem().Text(rec.Title ?? "Recommendation").FontSize(9).Bold();
-                            row.ConstantItem(80).AlignRight()
-                                .Text(rec.Priority ?? "-").FontSize(8)
-                                .FontColor(GetPriorityColor(rec.Priority));
-                        });
-                        if (!string.IsNullOrEmpty(rec.ImplementationGuidance))
-                        {
-                            recCol.Item().PaddingTop(4).Text(rec.ImplementationGuidance).FontSize(8);
-                        }
-                    });
-                }
+                            r.Title ?? "-",
+                            r.Priority ?? "-",
+                            r.ImplementationGuidance ?? "-",
+                            r.EstimatedEffort ?? "-"
+                        }).ToList(),
+                        new[] { 1, 3 } // Badge columns for priority and effort
+                    ));
+                column.Item().PaddingTop(8);
             }
 
-            // Compliant Areas
+            // Compliant Areas table
             if (analysis.CompliantAreas?.Any() == true)
             {
-                column.Item().PaddingTop(10).Text($"Compliant Areas ({analysis.CompliantAreas.Count})").FontSize(11).Bold().FontColor(Colors.Green.Darken2);
-                column.Item().Table(table =>
-                {
-                    table.ColumnsDefinition(cols =>
-                    {
-                        cols.ConstantColumn(80);
-                        cols.RelativeColumn(2);
-                        cols.ConstantColumn(60);
-                        cols.RelativeColumn(3);
-                    });
-
-                    table.Header(header =>
-                    {
-                        header.Cell().Background(Colors.Grey.Lighten3).Padding(5).Text("Control ID").FontSize(8).Bold();
-                        header.Cell().Background(Colors.Grey.Lighten3).Padding(5).Text("Control Name").FontSize(8).Bold();
-                        header.Cell().Background(Colors.Grey.Lighten3).Padding(5).Text("Status").FontSize(8).Bold();
-                        header.Cell().Background(Colors.Grey.Lighten3).Padding(5).Text("Evidence").FontSize(8).Bold();
-                    });
-
-                    foreach (var area in analysis.CompliantAreas)
-                    {
-                        table.Cell().BorderBottom(1).BorderColor(Colors.Grey.Lighten2).Padding(4)
-                            .Text(area.ControlId ?? "-").FontSize(8);
-                        table.Cell().BorderBottom(1).BorderColor(Colors.Grey.Lighten2).Padding(4)
-                            .Text(area.ControlName ?? "-").FontSize(8);
-                        table.Cell().BorderBottom(1).BorderColor(Colors.Grey.Lighten2).Padding(4)
-                            .Text(area.ComplianceStatus ?? "-").FontSize(8)
-                            .FontColor(Colors.Green.Darken2);
-                        table.Cell().BorderBottom(1).BorderColor(Colors.Grey.Lighten2).Padding(4)
-                            .Text(area.Evidence ?? "-").FontSize(8);
-                    }
-                });
+                column.Item().Element(c => PdfReportComponents.SectionTitle(c,
+                    $"Compliant Areas ({analysis.CompliantAreas.Count})"));
+                column.Item().PaddingTop(5).Element(c =>
+                    PdfReportComponents.ComposeDataTable(c,
+                        new[] { "Control ID", "Control Name", "Status", "Evidence" },
+                        analysis.CompliantAreas.Select(a => new[]
+                        {
+                            a.ControlId ?? "-",
+                            a.ControlName ?? "-",
+                            a.ComplianceStatus ?? "-",
+                            a.Evidence ?? "-"
+                        }).ToList(),
+                        new[] { 2 } // Badge column for status
+                    ));
             }
         });
     }
@@ -343,68 +425,157 @@ public class GovernanceExportService : IGovernanceExportService
     {
         container.Column(column =>
         {
-            column.Item().Row(row =>
+            // Branded accent bar
+            column.Item().Height(4).Background(PdfReportComponents.SecondaryColor);
+
+            column.Item().PaddingTop(8).PaddingBottom(8).Row(row =>
             {
                 row.RelativeItem().Column(col =>
                 {
-                    col.Item().Text("Cloudativ Assessment")
-                        .FontSize(24).Bold().FontColor(SecondaryColor);
                     col.Item().Text($"{analysis.StandardDisplayName} Compliance Report")
-                        .FontSize(14).FontColor(SecondaryColor);
+                        .FontSize(20).Bold().FontColor(PdfReportComponents.SecondaryColor);
+                    col.Item().PaddingTop(2).Text(tenantName)
+                        .FontSize(11).FontColor(PdfReportComponents.LightTextColor);
                 });
-
-                row.ConstantItem(150).AlignRight().Column(col =>
+                row.ConstantItem(180).Column(col =>
                 {
-                    col.Item().Text($"Tenant: {tenantName}").FontSize(10);
-                    col.Item().Text($"Generated: {DateTime.Now:MMM dd, yyyy HH:mm}").FontSize(10);
+                    col.Item().AlignRight().Text($"Generated: {DateTime.UtcNow:yyyy-MM-dd HH:mm} UTC")
+                        .FontSize(8).FontColor(PdfReportComponents.LightTextColor);
+                    col.Item().AlignRight().PaddingTop(2)
+                        .Text($"Score: {analysis.ComplianceScore}%")
+                        .FontSize(12).Bold()
+                        .FontColor(GetScoreColor(analysis.ComplianceScore));
                 });
             });
 
-            column.Item().PaddingVertical(10).LineHorizontal(2).LineColor(PrimaryColor);
-            column.Item().PaddingVertical(15);
+            column.Item().LineHorizontal(1).LineColor(PdfReportComponents.BorderColor);
+
+            // Stat cards for single analysis
+            column.Item().PaddingTop(10).Element(c =>
+                PdfReportComponents.ComposeStatCards(c, new List<StatCardData>
+                {
+                    new("Total Controls", $"{analysis.TotalControls}", null, PdfReportComponents.SecondaryColor),
+                    new("Compliant", $"{analysis.CompliantControls}", null, PdfReportComponents.SuccessColor),
+                    new("Gaps Found", $"{analysis.ComplianceGaps?.Count ?? 0}", null,
+                        (analysis.ComplianceGaps?.Count ?? 0) > 0
+                            ? PdfReportComponents.DangerColor : PdfReportComponents.SuccessColor),
+                    new("Recommendations", $"{analysis.Recommendations?.Count ?? 0}", null, PdfReportComponents.InfoColor)
+                }));
+
+            column.Item().PaddingVertical(10);
         });
     }
 
     private void ComposeSingleContent(IContainer container, GovernanceAnalysisDto analysis)
     {
-        container.Element(c => ComposeAnalysisSection(c, analysis));
+        container.Column(column =>
+        {
+            // Charts: Control Status + Gap Severity
+            var controlSegments = new List<ChartSegment>
+            {
+                new("Compliant", analysis.CompliantControls, PdfReportComponents.SuccessColor),
+                new("Partial", analysis.PartiallyCompliantControls, PdfReportComponents.WarningColor),
+                new("Non-Compliant", analysis.NonCompliantControls, PdfReportComponents.DangerColor)
+            };
+
+            var gapSegments = new List<ChartSegment>();
+            if (analysis.ComplianceGaps?.Any() == true)
+            {
+                var crit = analysis.ComplianceGaps.Count(g => string.Equals(g.Severity, "Critical", StringComparison.OrdinalIgnoreCase));
+                var high = analysis.ComplianceGaps.Count(g => string.Equals(g.Severity, "High", StringComparison.OrdinalIgnoreCase));
+                var med = analysis.ComplianceGaps.Count(g => string.Equals(g.Severity, "Medium", StringComparison.OrdinalIgnoreCase));
+                var low = analysis.ComplianceGaps.Count(g => string.Equals(g.Severity, "Low", StringComparison.OrdinalIgnoreCase));
+                if (crit > 0) gapSegments.Add(new("Critical", crit, "#DC2626"));
+                if (high > 0) gapSegments.Add(new("High", high, "#EF7348"));
+                if (med > 0) gapSegments.Add(new("Medium", med, "#CA8A04"));
+                if (low > 0) gapSegments.Add(new("Low", low, "#0078D4"));
+            }
+            if (!gapSegments.Any())
+                gapSegments.Add(new("No Gaps", 1, PdfReportComponents.SuccessColor));
+
+            column.Item().Element(c => PdfReportComponents.ChartRow(c,
+                left => PdfChartHelper.DonutChart(left, controlSegments,
+                    "Controls", $"{analysis.TotalControls}", "Control Status"),
+                right => PdfChartHelper.DonutChart(right, gapSegments,
+                    "Gaps", $"{analysis.ComplianceGaps?.Count ?? 0}", "Gap Severity")));
+
+            column.Item().PaddingTop(12);
+
+            // Gaps table
+            if (analysis.ComplianceGaps?.Any() == true)
+            {
+                column.Item().Element(c => PdfReportComponents.SectionTitle(c,
+                    $"Compliance Gaps ({analysis.ComplianceGaps.Count})"));
+                column.Item().PaddingTop(5).Element(c =>
+                    PdfReportComponents.ComposeDataTable(c,
+                        new[] { "Control ID", "Control Name", "Gap Description", "Severity" },
+                        analysis.ComplianceGaps.Select(g => new[]
+                        {
+                            g.ControlId ?? "-",
+                            g.ControlName ?? "-",
+                            g.GapDescription ?? "-",
+                            g.Severity ?? "-"
+                        }).ToList(),
+                        new[] { 3 }));
+                column.Item().PaddingTop(8);
+            }
+
+            // Recommendations table
+            if (analysis.Recommendations?.Any() == true)
+            {
+                column.Item().Element(c => PdfReportComponents.SectionTitle(c,
+                    $"Recommendations ({analysis.Recommendations.Count})"));
+                column.Item().PaddingTop(5).Element(c =>
+                    PdfReportComponents.ComposeDataTable(c,
+                        new[] { "Title", "Priority", "Implementation Guidance", "Effort" },
+                        analysis.Recommendations.Select(r => new[]
+                        {
+                            r.Title ?? "-",
+                            r.Priority ?? "-",
+                            r.ImplementationGuidance ?? "-",
+                            r.EstimatedEffort ?? "-"
+                        }).ToList(),
+                        new[] { 1, 3 }));
+                column.Item().PaddingTop(8);
+            }
+
+            // Compliant Areas table
+            if (analysis.CompliantAreas?.Any() == true)
+            {
+                column.Item().Element(c => PdfReportComponents.SectionTitle(c,
+                    $"Compliant Areas ({analysis.CompliantAreas.Count})"));
+                column.Item().PaddingTop(5).Element(c =>
+                    PdfReportComponents.ComposeDataTable(c,
+                        new[] { "Control ID", "Control Name", "Status", "Evidence" },
+                        analysis.CompliantAreas.Select(a => new[]
+                        {
+                            a.ControlId ?? "-",
+                            a.ControlName ?? "-",
+                            a.ComplianceStatus ?? "-",
+                            a.Evidence ?? "-"
+                        }).ToList(),
+                        new[] { 2 }));
+            }
+        });
     }
 
     private void ComposeFooter(IContainer container)
     {
-        container.AlignCenter().Text(text =>
-        {
-            text.CurrentPageNumber();
-            text.Span(" / ");
-            text.TotalPages();
-            text.Span("  |  ");
-            text.Span("Generated by Cloudativ Assessment").FontSize(8).FontColor(Colors.Grey.Darken1);
-        });
+        PdfReportComponents.ComposeFooter(container);
     }
 
     private static string GetScoreColor(int score) => score switch
     {
-        >= 80 => Colors.Green.Darken2,
-        >= 60 => Colors.Orange.Darken2,
-        _ => Colors.Red.Darken2
+        >= 80 => PdfReportComponents.SuccessColor,
+        >= 60 => PdfReportComponents.WarningColor,
+        _ => PdfReportComponents.DangerColor
     };
 
-    private static string GetSeverityColor(string? severity) => severity?.ToLower() switch
+    private static string GetScoreBarColor(int score) => score switch
     {
-        "critical" => Colors.Red.Darken3,
-        "high" => Colors.Red.Darken1,
-        "medium" => Colors.Orange.Darken2,
-        "low" => Colors.Blue.Darken1,
-        _ => Colors.Grey.Darken1
-    };
-
-    private static string GetPriorityColor(string? priority) => priority?.ToLower() switch
-    {
-        "critical" => Colors.Red.Darken3,
-        "high" => Colors.Red.Darken1,
-        "medium" => Colors.Orange.Darken2,
-        "low" => Colors.Blue.Darken1,
-        _ => Colors.Grey.Darken1
+        >= 80 => PdfReportComponents.SuccessColor,
+        >= 60 => PdfReportComponents.WarningColor,
+        _ => PdfReportComponents.DangerColor
     };
 
     #endregion
